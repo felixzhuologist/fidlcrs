@@ -1,5 +1,9 @@
 use crate::span;
 
+pub mod attributes;
+pub mod errors;
+pub mod validate;
+
 pub type Spanned<T> = span::Spanned<T, usize>;
 
 pub type CompoundIdentifier = Vec<Spanned<String>>;

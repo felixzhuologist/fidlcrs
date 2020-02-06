@@ -8,6 +8,25 @@ use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, Sou
 use lalrpop_util;
 use std::fmt;
 
+pub fn parse(src: &SourceFile) -> Result<raw::File, Error> {
+    let result = grammar::FileParser::new().parse(lexer::Lexer::new(src.contents()));
+    result.map_err(|err| Error::from_parse_error(src.id, err))
+}
+
+// TOD: separate out all the erorr code
+// TODO: follow rustc's parse error format:
+// error: expected one of `::`, `;`, or `as`, found keyword `use`
+//  --> src/raw/attributes.rs:2:1
+//   |
+// 1 | use super::errors::Error
+//   |                         - expected one of `::`, `;`, or `as`
+// 2 | use crate::raw::Attribute;
+//   | ^^^ unexpected token
+
+// error: aborting due to previous error
+
+// error: could not compile `fidlc-rs`.
+
 // use crate::lexer::Token
 
 // this needs to be kept in sync with the grammar and lexer
@@ -159,13 +178,4 @@ impl Error {
             error_type: err.into(),
         }
     }
-}
-
-fn lex_error_to_snippet(err: lexer::SpannedError, src: &SourceFile) -> Snippet {
-    unimplemented!()
-}
-
-pub fn parse(src: &SourceFile) -> Result<raw::File, Error> {
-    let result = grammar::FileParser::new().parse(lexer::Lexer::new(src.contents()));
-    result.map_err(|err| Error::from_parse_error(src.id, err))
 }

@@ -5,9 +5,10 @@ use std::io::Read;
 
 #[macro_use]
 extern crate lalrpop_util;
-// #[macro_use]
-// extern crate lazy_static;
+#[macro_use]
+extern crate lazy_static;
 
+pub mod ast;
 pub mod errors;
 lalrpop_mod!(pub grammar);
 pub mod lexer;
@@ -42,7 +43,11 @@ fn main() {
     {
         let src_file = lib_cx.add_file(path, contents);
         match parser::parse(src_file) {
-            Ok(_) => println!("Parsed successfully!"),
+            Ok(file) => {
+                for error in raw::validate::validate_file(&file) {
+                    error_cx.add_error(error.into_snippet(&lib_cx));
+                }
+            },
             Err(err) => {
                 error_cx.add_error(err.into_snippet(&lib_cx));
                 println!("Parsing failed");
