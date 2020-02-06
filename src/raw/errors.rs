@@ -1,4 +1,4 @@
-use crate::source_file::{FileMap};
+use crate::source_file::SourceFile;
 use crate::raw::{Attribute, Spanned};
 use super::attributes::Placement;
 use annotate_snippets::snippet::Snippet;
@@ -19,7 +19,7 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn into_snippet(self, _files: &FileMap) -> Snippet {
+    pub fn into_snippet(self, _src: &SourceFile) -> Snippet {
         unimplemented!()
     }
 }

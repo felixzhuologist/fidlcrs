@@ -44,12 +44,13 @@ fn main() {
         let src_file = lib_cx.add_file(path, contents);
         match parser::parse(src_file) {
             Ok(file) => {
+                // could just .extend(.map) if this were a vector
                 for error in raw::validate::validate_file(&file) {
-                    error_cx.add_error(error.into_snippet(&lib_cx));
+                    error_cx.add_error(error.into_snippet(&src_file));
                 }
             },
             Err(err) => {
-                error_cx.add_error(err.into_snippet(&lib_cx));
+                error_cx.add_error(err.into_snippet(&src_file));
                 println!("Parsing failed");
             }
         };
