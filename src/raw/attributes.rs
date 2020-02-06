@@ -2,6 +2,7 @@ use super::errors::Error;
 use crate::raw::Attribute;
 use crate::raw::Spanned;
 use std::collections::HashMap;
+use std::fmt;
 
 lazy_static! {
     pub static ref BUILTIN_SCHEMAS: HashMap<String, AttributeSchema> = {
@@ -123,4 +124,29 @@ pub enum Placement {
     TypeAliasDecl,
     UnionDecl,
     UnionMember,
+}
+
+impl fmt::Display for Placement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Placement::*;
+        match self {
+            BitsDecl => write!(f, "bits declaration"),
+            BitsMember => write!(f, "bits field"),
+            ConstDecl => write!(f, "const declaration"),
+            EnumDecl => write!(f, "enum declaration"),
+            EnumMember => write!(f, "bits field"),
+            ProtocolDecl => write!(f, "interface declaration"),
+            Library => write!(f, "library declaration"),
+            Method => write!(f, "interface method"),
+            ServiceDecl => write!(f, "service declaration"),
+            ServiceMember => write!(f, "service member"),
+            StructDecl => write!(f, "struct declaration"),
+            StructMember => write!(f, "struct field"),
+            TableDecl => write!(f, "table declaration"),
+            TableMember => write!(f, "table member"),
+            TypeAliasDecl => write!(f, "type alias"),
+            UnionDecl => write!(f, "union declaration"),
+            UnionMember => write!(f, "union field"),
+        }
+    }
 }

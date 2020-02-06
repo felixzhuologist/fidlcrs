@@ -53,7 +53,10 @@ impl Validator {
             if !schema.is_value_valid(&attr.value.value) {
                 self.errors.push(Error::InvalidAttributeValue {
                     name: attr.value.name.clone(),
-                    value: attr.value.value.clone().unwrap(),
+                    value: attr.value.value.clone().unwrap_or(Spanned {
+                        value: "".to_string(),
+                        span: attr.span,
+                    }),
                 });
             }
         }

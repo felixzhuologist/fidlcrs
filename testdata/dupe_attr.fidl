@@ -1,0 +1,8 @@
+[Foo = "bar", Bar = "baz", Baz, Foo = "aha"]
+library test;
+
+/// this is a doc comment
+/// this struct is purely for test purposes
+[Doc = "what? another doc comment?"]
+struct Foo {};
+
