@@ -1,0 +1,4 @@
+library test;
+
+const ok uint8 = 0x123;
+const bad uint8 = 01x0123;

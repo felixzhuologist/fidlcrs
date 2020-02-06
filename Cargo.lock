@@ -19,6 +19,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "annotate-snippets"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7021ce4924a3f25f802b2cccd1af585e39ea1a363a1aa2e72afe54b67a3a7a7"
+dependencies = [
+ "ansi_term",
+]
+
+[[package]]
+name = "ansi_term"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee49baf6cb617b853aa8d93bf420db2383fab46d314482ca2803b40d5fde979b"
+dependencies = [
+ "winapi",
+]
+
+[[package]]
 name = "argh"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -251,6 +269,7 @@ checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
 name = "fidlc-rs"
 version = "0.1.0"
 dependencies = [
+ "annotate-snippets",
  "argh",
  "lalrpop",
  "lalrpop-util",

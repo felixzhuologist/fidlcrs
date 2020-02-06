@@ -54,8 +54,17 @@ pub enum Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Error::*;
         match *self {
-            Error::UnexpectedChar(ch) => write!(f, "unexpected character: {}", ch),
+            UnexpectedChar(ch) => write!(f, "unexpected character: {}", ch),
+            UnexpectedEof => write!(f, "unexpected eof"),
+            UnterminatedStringLiteral => write!(f, "unterminated string literal"),
+            UnexpectedEscapeCode(ch) => write!(f, "unexpected escape code: {}", ch),
+            NonParseableInt => write!(f, "unable to parse int"),
+            NumericLiteralOverflow => write!(f, "numeric literal too large"),
+            NumericLiteralUnderflow => write!(f, "numeric literal too small"),
+            NumericLiteralWrongPrefix => write!(f, "invalid numeric literal prefix"),
+            NumericLiteralIncomplete => write!(f, "incomplete numeric literal"),
             _ => write!(f, "todo"),
         }
     }
@@ -425,7 +434,7 @@ mod test {
     use super::*;
 
     use super::Token::*;
-    use crate::source_file::{to_offsets, Lines};
+    use crate::source_file::Lines;
 
     fn tokenizer<'input>(
         input: &'input str,
@@ -442,7 +451,7 @@ mod test {
         let mut tokenizer = tokenizer(input);
         let mut count = 0;
         let length = expected.len();
-        let lines = Lines::new(to_offsets(input), input.len());
+        let lines = Lines::new(input);
         for (token, (expected_span, expected_tok)) in tokenizer.by_ref().zip(expected.into_iter()) {
             count += 1;
             println!("{:?}", token);

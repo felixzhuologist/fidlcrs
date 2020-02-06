@@ -31,7 +31,7 @@ use crate::raw::{
     UnionMemberInner,
 };
 use crate::token::Token;
-use crate::lexer::Error;
+use crate::lexer::SpannedError;
 use crate::span;
 
 grammar<'input>;
@@ -363,7 +363,7 @@ Spanned<T>: Spanned<T> = {
 
 extern {
     type Location = usize;
-    type Error = span::Spanned<Error, span::Location>;
+    type Error = SpannedError;
 
     enum Token<'input> {
         "as" => Token::As,
