@@ -1,0 +1,81 @@
+library test.example;
+using fuchsia.geometry as geo;
+
+/// this flag is important
+const bool ENABLED_FLAG = true;
+const int8 OFFSET = -33;
+const uint16 ANSWER = 42;
+// const uint16 ANSWER_IN_BINARY = 0b101010;
+const uint32 POPULATION_USA_2018 = 330000000;
+const uint64 DIAMOND = 0x183c7effff7e3c18;
+const uint64 FUCHSIA = 4054509061583223046;
+const string USERNAME = "squeenze";
+const float32 MIN_TEMP = -273.15;
+const float64 CONVERSION_FACTOR = 1.41421358;
+const Beverage MY_DRINK = WATER;
+
+using numbertype = uint32;
+// using bad.bad as bad;
+
+/// this struct belongs to me
+struct MyStruct {
+    bool some_bool;
+    vector<uint8>:10 my_data;
+    handle<vmo> stuff;
+};
+
+[Foo, Bar = "blablabla"]
+struct EmptyStruct{};
+
+// Bit definitions for Info.features field
+bits InfoFeatures : uint32 {
+    WLAN = 0x00000001;      // If present, this device represents WLAN hardware
+    SYNTH = 0x00000002;     // If present, this device is synthetic (not backed by h/w)
+    LOOPBACK = 0x00000004;  // If present, this device receives all messages it sends
+};
+
+// An enum declared at library scope.
+strict enum Beverage : uint8 {
+    WATER = 0;
+    COFFEE = 1;
+    TEA = 2;
+    WHISKEY = 3;
+};
+
+// An enum declared at library scope.
+// Underlying type is assumed to be uint32.
+enum Vessel {
+    CUP = 0;
+    BOWL = 1;
+    TUREEN = 2;
+    JUG = 3;
+};
+
+flexible table Profile {
+    1: vector<string> locales;
+    2: vector<string> calendars;
+    3: vector<string> time_zones;
+    4: reserved;
+};
+
+using foobar = string:30;
+
+/// The result of an operation. A result is either a single number or an
+/// [Error] value.
+union Result {
+    1: float64 number;
+    2: reserved;
+    3: Error err;
+};
+
+enum DivisionError : uint32 {
+    DivideByZero = 1;
+};
+
+protocol Calculator {
+    Add(int32 a, int32 b) -> (int32 sum);
+    Divide(int32 dividend, int32 divisor)
+        -> (int32 quotient, int32 remainder) error DivisionError;
+    Clear();
+    -> OnClear();
+};

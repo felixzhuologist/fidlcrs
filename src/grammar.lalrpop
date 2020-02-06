@@ -1,0 +1,416 @@
+use crate::raw::{
+    Alias,
+    Attribute,
+    Bits,
+    BitsMember,
+    CompoundIdentifier,
+    ConstVal,
+    ConstDecl,
+    Decl,
+    Enum,
+    EnumMember,
+    File,
+    Import,
+    IntLiteral,
+    Literal,
+    Method,
+    Parameter,
+    Protocol,
+    Service,
+    ServiceMember,
+    Spanned,
+    Strictness,
+    Struct,
+    StructMember,
+    Table,
+    TableMember,
+    TableMemberInner,
+    Type,
+    Union,
+    UnionMember,
+    UnionMemberInner,
+};
+use crate::token::Token;
+use crate::lexer::Error;
+use crate::span;
+
+grammar<'input>;
+
+pub File: File = {
+    <attributes:AttributeBlock>
+    <name:FileHeader>
+    <imports:Spanned<Import>*>
+    <decls:SemicolonSeparated<Decl>> => {
+        let mut structs = Vec::new();
+        let mut consts = Vec::new();
+        let mut bits = Vec::new();
+        let mut enums = Vec::new();
+        let mut tables = Vec::new();
+        let mut unions = Vec::new();
+        let mut aliases = Vec::new();
+        let mut protocols = Vec::new();
+        let mut services = Vec::new();
+        decls.into_iter().for_each(|decl| {
+            let l = decl.span.start;
+            let r = decl.span.end;
+            match decl.value {
+                Decl::Alias(v) => {
+                    aliases.push(span::spanned(l, r, v));
+                }
+                Decl::Struct(v) => {
+                    structs.push(span::spanned(l, r, v));
+                },
+                Decl::Const(v) => {
+                    consts.push(span::spanned(l, r, v));
+                },
+                Decl::Bits(v) => {
+                    bits.push(span::spanned(l, r, v));
+                },
+                Decl::Enum(v) => {
+                    enums.push(span::spanned(l, r, v));
+                },
+                Decl::Table(v) => {
+                    tables.push(span::spanned(l, r, v));
+                },
+                Decl::Union(v) => {
+                    unions.push(span::spanned(l, r, v));
+                },
+                Decl::Protocol(v) => {
+                    protocols.push(span::spanned(l, r, v));
+                },
+                Decl::Service(v) => {
+                    services.push(span::spanned(l, r, v));
+                }
+            }
+        });
+        File {
+            attributes,
+            name,
+            imports,
+
+            aliases,
+            structs,
+            consts,
+            bits,
+            enums,
+            tables,
+            unions,
+            protocols,
+            services
+        }
+    }
+};
+
+FileHeader: CompoundIdentifier = {
+    "library" <CompoundIdentifier> ";"
+};
+
+Import: Import = {
+    <attributes:AttributeBlock> "using" <name:CompoundIdentifier> <alias:("as" <Spanned<Identifier>>)?> ";" => Import { attributes, name, alias },
+};
+
+Decl: Decl = {
+    <attributes:AttributeBlock> "struct" <name:Spanned<Identifier>> "{"
+        <members:SemicolonSeparated<StructMember>>
+    "}" => Decl::Struct(Struct{ attributes, name, members }),
+
+    <attributes:AttributeBlock> "using" <name:Spanned<Identifier>> "=" <ty:Spanned<Type>> =>
+        Decl::Alias(Alias{ attributes, name, ty }),
+
+    <attributes:AttributeBlock> "const" <ty:Spanned<Type>>
+        <name:Spanned<Identifier>>  "=" <value:Spanned<ConstVal>> => Decl::Const(ConstDecl{ attributes, ty, name, value }),
+
+    <attributes:AttributeBlock> <strictness:Strictness> "bits" <name:Spanned<Identifier>> <ty:MaybeType>  "{"
+        <members:SemicolonSeparated<BitsMember>>
+    "}" => Decl::Bits(Bits{ attributes, strictness, ty, name, members }),
+
+    <attributes:AttributeBlock> <strictness:Strictness> "enum" <name:Spanned<Identifier>> <ty:MaybeType> "{"
+        <members:SemicolonSeparated<EnumMember>>
+    "}" => Decl::Enum(Enum{ attributes, strictness, ty, name, members }),
+
+    <attributes:AttributeBlock> <strictness:Strictness> "table" <name:Spanned<Identifier>> "{"
+        <members:SemicolonSeparated<TableMember>>
+    "}" => Decl::Table(Table{ attributes, strictness, name, members }),
+
+    <attributes:AttributeBlock> <strictness:Strictness> "union" <name:Spanned<Identifier>> "{"
+        <members:SemicolonSeparated<UnionMember>>
+    "}" => Decl::Union(Union{ attributes, strictness, name, members }),
+
+    <attributes:AttributeBlock> <strictness:Strictness> "xunion" <name:Spanned<Identifier>> "{"
+        <members:SemicolonSeparated<UnionMember>>
+    "}" => Decl::Union(Union{ attributes, strictness, name, members }),
+
+    <attributes:AttributeBlock> "protocol" <name:Spanned<Identifier>> "{"
+        <compose:ProtocolCompose*>
+        <methods:SemicolonSeparated<Method>>
+    "}" => Decl::Protocol(Protocol{ attributes, name, compose, methods }),
+
+    <attributes:AttributeBlock> "service" <name:Spanned<Identifier>> "{"
+        <members:SemicolonSeparated<ServiceMember>>
+    "}" => Decl::Service(Service{ attributes, name, members }),
+};
+
+ProtocolCompose: CompoundIdentifier = {
+    "compose" <CompoundIdentifier> ";" => <>,
+};
+
+Method: Method = {
+    <attributes:AttributeBlock> <name:Spanned<Identifier>> "("
+        <request:CommaSeparated<Parameter>>
+    ")" => Method{ attributes, name, request: Some(request), response: None, error: None },
+
+    <attributes:AttributeBlock> <name:Spanned<Identifier>> "("
+        <request:CommaSeparated<Parameter>>
+    ")" "->" "(" <response:CommaSeparated<Parameter>> ")" <error:MaybeError>
+    => Method{ attributes, name, request: Some(request), response: Some(response), error },
+
+    <attributes:AttributeBlock> "->" <name:Spanned<Identifier>> "("
+        <response:CommaSeparated<Parameter>>
+    ")" => Method{ attributes, name, request: None, response: Some(response), error: None },
+};
+
+Parameter: Parameter = {
+    <attributes:AttributeList> <ty:Spanned<Type>> <name:Spanned<Identifier>> =>
+        Parameter { attributes, name, ty }
+};
+
+MaybeError: Option<Spanned<Box<Type>>> = {
+    ("error" <Spanned<Type>>)? => <>
+};
+
+MaybeType: Option<Spanned<Box<Type>>> = {
+    (":" <Spanned<Type>>)? => <>
+};
+
+BitsMember: BitsMember = {
+    <attributes:AttributeBlock> <name:Spanned<Identifier>> "=" <value:Spanned<ConstVal>> =>
+        BitsMember{ attributes, name, value }
+};
+
+EnumMember: EnumMember = {
+    <attributes:AttributeBlock> <name:Spanned<Identifier>> "=" <value:Spanned<ConstVal>> =>
+        EnumMember{ attributes, name, value }
+};
+
+StructMember: StructMember = {
+    <attributes:AttributeBlock>
+        <ty:Spanned<Type>>
+        <name:Spanned<Identifier>>
+        <default_value:MaybeDefault> => StructMember { attributes, ty, name, default_value }
+};
+
+TableMember: TableMember = {
+    <attributes:AttributeBlock> <ordinal:Spanned<IntLiteral>> ":" <inner: TableMemberInner> =>
+        TableMember { attributes, ordinal, inner }
+};
+
+TableMemberInner: TableMemberInner = {
+    "reserved" => TableMemberInner::Reserved,
+    <ty:Spanned<Type>> <name:Spanned<Identifier>> <default_value:MaybeDefault> =>
+        TableMemberInner::Used{ ty, name, default_value}
+};
+
+UnionMember: UnionMember = {
+    <attributes:AttributeBlock> <ordinal:Spanned<IntLiteral>> ":" <inner: UnionMemberInner> =>
+        UnionMember { attributes, ordinal, inner }
+};
+
+UnionMemberInner: UnionMemberInner = {
+    "reserved" => UnionMemberInner::Reserved,
+    <ty:Spanned<Type>> <name:Spanned<Identifier>> => UnionMemberInner::Used{ ty, name },
+};
+
+ServiceMember: ServiceMember = {
+    <attributes:AttributeBlock> <protocol:CompoundIdentifier> <name:Spanned<Identifier>> =>
+        ServiceMember { attributes, protocol, name }
+}
+
+MaybeDefault: Option<Spanned<ConstVal>> = {
+    ("=" <Spanned<ConstVal>>)? => <>
+};
+
+Strictness: Option<Spanned<Strictness>> = {
+    Spanned<"strict"> => {
+        let span = <>.span;
+        Some(span::spanned(span.start, span.end, Strictness::Strict))
+    },
+    Spanned<"flexible"> => {
+        let span = <>.span;
+        Some(span::spanned(span.start, span.end, Strictness::Flexible))
+    },
+    => None,
+};
+
+Type: Box<Type> = {
+    <name:CompoundIdentifier> <layout:Layout> <constraint:Constraint> <nullable:Nullable> =>
+        Box::new(Type { name, layout, constraint, nullable })
+};
+
+Layout: Option<Spanned<Box<Type>>> = {
+    ("<" <Spanned<Type>> ">")? => <>,
+};
+
+Constraint: Option<Spanned<ConstVal>> = {
+    (":" <Spanned<ConstVal>>)? => <>,
+};
+
+Nullable: bool = {
+    "?" => true,
+    => false,
+};
+
+ConstVal: ConstVal = {
+    CompoundIdentifier => ConstVal::Identifier(<>),
+    Spanned<Literal> => ConstVal::Literal(<>),
+};
+
+Literal: Literal = {
+    string_literal => Literal::Str(<>),
+    IntLiteral => Literal::Int(<>),
+    float_literal => Literal::Float(<>),
+    "true" => Literal::True,
+    "false" => Literal::False,
+};
+
+AttributeBlock: Vec<Spanned<Attribute>> = {
+    <lines:Spanned<doc_comment>*> <attrs:AttributeList> => {
+        let mut attrs = attrs;
+        if !lines.is_empty() {
+            let mut comment = String::new();
+            for line in &lines {
+                comment.push_str(&line.value);
+            }
+
+            let start = lines.first().unwrap().span.start;
+            let end = lines.last().unwrap().span.end;
+            attrs.push(span::spanned(start, end, Attribute {
+                name: span::spanned(0, 0, "Doc".to_string()),
+                value: Some(span::spanned(start, end, comment))
+            }));
+        }
+        attrs
+    }
+}
+
+AttributeList: Vec<Spanned<Attribute>> = {
+    ("[" <CommaSeparatedNonEmpty<Attribute>> "]")? => match <> {
+        Some(v) => v,
+        None => Vec::new(),
+    }
+}
+
+Attribute: Attribute = {
+    <name:Spanned<Identifier>> <value:("=" <Spanned<string_literal>>)?> => Attribute { name, value },
+};
+
+CompoundIdentifier: CompoundIdentifier = DotSeparated<Identifier>;
+
+Identifier: String = {
+    identifier => String::from(<>),
+
+    // keywords that are also valid identifiers must be explicitly listed here
+    "struct" => String::from("struct"),
+    "union" => String::from("union"),
+    "xunion" => String::from("xunion"),
+    "bits" => String::from("bits"),
+    "protocol" => String::from("protocol"),
+    "service" => String::from("service"),
+    "strict" => String::from("strict"),
+    "flexible" => String::from("flexible"),
+    "table" => String::from("table"),
+    "error" => String::from("error"),
+    "reserved" => String::from("reserved"),
+    "const" => String::from("const"),
+    // dangerous identifiers only
+    "using" => String::from("using"),
+    "as" => String::from("as"),
+    "enum" => String::from("enum"),
+    "library" => String::from("library"),
+};
+
+CommaSeparated<T>: Vec<Spanned<T>> = {
+    CommaSeparatedNonEmpty<T> => <>,
+    => Vec::new(),
+}
+
+CommaSeparatedNonEmpty<T>: Vec<Spanned<T>> = {
+    <v:(<Spanned<T>> ",")*> <e:Spanned<T>> => {
+        let mut v = v;
+        v.push(e);
+        v
+    }
+}
+
+SemicolonSeparated<T>: Vec<Spanned<T>> = {
+    (<Spanned<T>> ";")*,
+};
+
+DotSeparated<T>: Vec<Spanned<T>> = {
+    <v:(<Spanned<T>> ".")*> <e:Spanned<T>> => {
+        let mut v = v;
+        v.push(e);
+        v
+    }
+};
+
+IntLiteral: IntLiteral = {
+    int_literal => IntLiteral{ value: <>.0, is_negative: <>.1 }
+};
+
+Spanned<T>: Spanned<T> = {
+    <l: @L> <v: T> <r: @R> => span::spanned(l, r, v)
+};
+
+extern {
+    type Location = usize;
+    type Error = span::Spanned<Error, span::Location>;
+
+    enum Token<'input> {
+        "as" => Token::As,
+        "library" => Token::Library,
+        "using" => Token::Using,
+
+        "bits" => Token::Bits,
+        "const" => Token::Const,
+        "enum" => Token::Enum,
+        "protocol" => Token::Protocol,
+        "service" => Token::Service,
+        "strict" => Token::Strict,
+        "struct" => Token::Struct,
+        "flexible" => Token::Flexible,
+        "table" => Token::Table,
+        "union" => Token::Union,
+        "xunion" => Token::XUnion,
+        "error" => Token::Error,
+        "reserved" => Token::Reserved,
+        "compose" => Token::Compose,
+
+        identifier => Token::Identifier(<&'input str>),
+
+        string_literal => Token::StringLiteral(<String>),
+        int_literal  => Token::IntLiteral(<u64>, <bool>),
+        float_literal => Token::FloatLiteral(<f64>),
+        doc_comment => Token::DocComment(<String>),
+        "true" => Token::True,
+        "false" => Token::False,
+
+        "{" => Token::LCurly,
+        "[" => Token::LSquare,
+        "(" => Token::LParen,
+        "<" => Token::LAngle,
+        "}" => Token::RCurly,
+        "]" => Token::RSquare,
+        ")" => Token::RParen,
+        ">" => Token::RAngle,
+
+        "." => Token::Dot,
+        "," => Token::Comma,
+        ";" => Token::Semi,
+        ":" => Token::Colon,
+        "?" => Token::Question,
+        "=" => Token::Equal,
+        "&" => Token::Ampersand,
+        "->" => Token::Arrow,
+        "|" => Token::Pipe,
+    }
+}

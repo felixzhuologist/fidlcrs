@@ -1,0 +1,17 @@
+[package]
+name = "fidlc-rs"
+version = "0.1.0"
+authors = ["fcz <fcz@google.com>"]
+edition = "2018"
+
+[build-dependencies]
+lalrpop = "0.17.2"
+
+[dependencies]
+# annotate-snippets = { version = "0.6.1", features = ["ansi_term"] }
+argh = "0.1.3"
+lalrpop-util = "0.17.2"
+lazy_static = "1.4.0"
+regex = "0.2.1"
+# TODO: separate out build dependencies
+# walkdir = "2"
