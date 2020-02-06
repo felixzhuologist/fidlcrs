@@ -48,7 +48,7 @@ fn main() {
                 for error in raw::validate::validate_file(&file) {
                     error_cx.add_error(error.into_snippet(&src_file));
                 }
-            },
+            }
             Err(err) => {
                 error_cx.add_error(err.into_snippet(&src_file));
                 println!("Parsing failed");

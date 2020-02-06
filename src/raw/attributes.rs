@@ -8,11 +8,17 @@ lazy_static! {
         let mut builtins = HashMap::new();
         builtins.insert(
             "Discoverable".to_string(),
-            AttributeSchema { placements: vec![Placement::ProtocolDecl], allowed_value: None },
+            AttributeSchema {
+                placements: vec![Placement::ProtocolDecl],
+                allowed_value: None,
+            },
         );
         builtins.insert(
             "Doc".to_string(),
-            AttributeSchema { placements: Vec::new(), allowed_value: None },
+            AttributeSchema {
+                placements: Vec::new(),
+                allowed_value: None,
+            },
         );
         builtins.insert(
             "FragileBase".to_string(),
@@ -56,11 +62,17 @@ lazy_static! {
         );
         builtins.insert(
             "Selector".to_string(),
-            AttributeSchema { placements: vec![Placement::Method], allowed_value: None },
+            AttributeSchema {
+                placements: vec![Placement::Method],
+                allowed_value: None,
+            },
         );
         builtins.insert(
             "Transport".to_string(),
-            AttributeSchema { placements: vec![Placement::ProtocolDecl], allowed_value: None },
+            AttributeSchema {
+                placements: vec![Placement::ProtocolDecl],
+                allowed_value: None,
+            },
         );
         builtins
     };

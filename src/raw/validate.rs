@@ -1,12 +1,12 @@
-use std::collections::HashMap;
-use super::attributes::{AttributeSchema, BUILTIN_SCHEMAS, Placement};
+use super::attributes::{AttributeSchema, Placement, BUILTIN_SCHEMAS};
 use super::errors::Error;
 use super::*;
+use std::collections::HashMap;
 
 pub fn validate_file(file: &File) -> Vec<Error> {
     let mut validator = Validator::new();
     validator.validate(file);
-    return validator.errors
+    return validator.errors;
 }
 
 pub struct Validator {
@@ -17,7 +17,10 @@ pub struct Validator {
 impl Validator {
     pub fn new() -> Validator {
         // TODO: construct as not often as possible
-        Validator { errors: Vec::new(), attribute_schemas: &BUILTIN_SCHEMAS, }
+        Validator {
+            errors: Vec::new(),
+            attribute_schemas: &BUILTIN_SCHEMAS,
+        }
     }
 
     pub fn validate(&mut self, file: &File) {
@@ -29,7 +32,7 @@ impl Validator {
         for (i, attr) in attrs.iter().enumerate() {
             self.validate_attribute(&attr, placement);
             if let Some(index) = seen.get(&attr.value.name.value) {
-                self.errors.push(Error::DuplicateAttributes{
+                self.errors.push(Error::DuplicateAttributes {
                     original: attrs[*index].clone(),
                     duplicate: attr.clone(),
                 });
@@ -42,13 +45,13 @@ impl Validator {
     fn validate_attribute(&mut self, attr: &Spanned<Attribute>, placement: Placement) {
         if let Some(ref schema) = self.attribute_schemas.get(&attr.value.name.value) {
             if !schema.is_placement_valid(placement) {
-                self.errors.push(Error::InvalidAttributePlacement{
+                self.errors.push(Error::InvalidAttributePlacement {
                     name: attr.value.name.clone(),
                     placement: placement,
                 });
             }
             if !schema.is_value_valid(&attr.value.value) {
-                self.errors.push(Error::InvalidAttributeValue{
+                self.errors.push(Error::InvalidAttributeValue {
                     name: attr.value.name.clone(),
                     value: attr.value.value.clone().unwrap(),
                 });

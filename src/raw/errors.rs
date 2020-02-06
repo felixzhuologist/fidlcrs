@@ -1,18 +1,18 @@
-use crate::source_file::SourceFile;
-use crate::raw::{Attribute, Spanned};
 use super::attributes::Placement;
+use crate::raw::{Attribute, Spanned};
+use crate::source_file::SourceFile;
 use annotate_snippets::snippet::Snippet;
 
 pub enum Error {
-    DuplicateAttributes{
+    DuplicateAttributes {
         original: Spanned<Attribute>,
         duplicate: Spanned<Attribute>,
     },
-    InvalidAttributePlacement{
+    InvalidAttributePlacement {
         name: Spanned<String>,
         placement: Placement,
     },
-    InvalidAttributeValue{
+    InvalidAttributeValue {
         name: Spanned<String>,
         value: Spanned<String>,
     },
