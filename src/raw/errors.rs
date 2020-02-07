@@ -28,6 +28,11 @@ pub enum Error {
         decl_span: Span,
         ordinal_spans: Vec<Span>,
     },
+    NonDenseOrdinals {
+        decl_span: Span,
+        name_span: Span,
+        missing_ranges: Vec<(u32, u32)>,
+    },
 }
 
 impl fmt::Display for Error {
@@ -192,7 +197,13 @@ impl Error {
                         id: None,
                         annotation_type: AnnotationType::Error,
                     }),
-                    footer: vec![],
+                    footer: vec![Annotation {
+                        label: Some(
+                            "try using an empty struct to define a placeholder variant".to_string(),
+                        ),
+                        id: None,
+                        annotation_type: AnnotationType::Help,
+                    }],
                     slices: vec![Slice {
                         source,
                         line_start,
@@ -239,6 +250,49 @@ impl Error {
                         origin: Some(src.path.clone()),
                         fold: false,
                         annotations,
+                    }],
+                }
+            }
+            NonDenseOrdinals {
+                decl_span,
+                name_span,
+                missing_ranges,
+            } => {
+                let (line_start, source) = src.surrounding_lines(decl_span.start, decl_span.end);
+                let source_start = src.lines.offset_at_line_number(line_start);
+
+                let missing_ranges = missing_ranges
+                    .into_iter()
+                    .map(|(start, end)| {
+                        if start == end {
+                            format!("{}", start)
+                        } else {
+                            format!("{} - {}", start, end)
+                        }
+                    })
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                Snippet {
+                    title: Some(Annotation {
+                        label: Some("non dense ordinals".to_string()),
+                        id: None,
+                        annotation_type: AnnotationType::Error,
+                    }),
+                    footer: vec![Annotation {
+                        label: Some(format!("missing ordinals: {}", missing_ranges)),
+                        id: None,
+                        annotation_type: AnnotationType::Help,
+                    }],
+                    slices: vec![Slice {
+                        source,
+                        line_start,
+                        origin: Some(src.path.clone()),
+                        fold: false,
+                        annotations: vec![SourceAnnotation {
+                            label: "declaration does not contain dense ordinals".to_string(),
+                            annotation_type: AnnotationType::Error,
+                            range: (name_span.start - source_start, name_span.end - source_start),
+                        }],
                     }],
                 }
             }

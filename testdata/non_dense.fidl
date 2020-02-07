@@ -1,0 +1,11 @@
+library test;
+
+table Foo {
+  5: reserved;
+  6: reserved;
+  7: reserved;
+  9: reserved;
+  10: reserved;
+  16: bool foo;
+};
+

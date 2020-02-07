@@ -158,16 +158,17 @@ impl Validator {
                     .push(Error::EmptyTableOrUnion(decl.span, FidlType::TableDecl));
             }
 
-            let (_ordinals, oob_ordinals): (Vec<_>, Vec<_>) = decl
+            let (ordinals, oob_ordinals): (Vec<_>, Vec<_>) = decl
                 .value
                 .members
                 .iter()
                 .map(|member| {
                     let IntLiteral { value, is_negative } = member.value.ordinal.value;
-                    if is_negative || value == 0 || u32::try_from(value).is_err() {
+                    let ord_val = u32::try_from(value);
+                    if is_negative || value == 0 || ord_val.is_err() {
                         Err(member.span)
                     } else {
-                        Ok(member)
+                        Ok(ord_val.unwrap())
                     }
                 })
                 .partition(Result::is_ok);
@@ -175,6 +176,23 @@ impl Validator {
                 self.errors.push(Error::OobOrdinals {
                     decl_span: decl.span,
                     ordinal_spans: oob_ordinals.into_iter().map(Result::unwrap_err).collect(),
+                });
+            }
+            let mut ordinals: Vec<u32> = ordinals.into_iter().map(Result::unwrap).collect();
+            ordinals.sort();
+            let mut missing_ranges: Vec<(u32, u32)> = Vec::new();
+            let mut next_expected = 1;
+            for ord in ordinals {
+                if ord != next_expected {
+                    missing_ranges.push((next_expected, ord - 1));
+                }
+                next_expected = ord + 1;
+            }
+            if !missing_ranges.is_empty() {
+                self.errors.push(Error::NonDenseOrdinals {
+                    decl_span: decl.span,
+                    name_span: decl.value.name.span,
+                    missing_ranges: missing_ranges,
                 });
             }
         }
