@@ -32,11 +32,11 @@ impl Validator {
 
         // self.validate_aliases(&file.aliases);
         // self.validate_consts(&file.consts);
-        // self.validate_bits(&file.bits);
-        // self.validate_enums(&file.enums);
-        // self.validate_structs(&file.structs);
-        // self.validate_tables(&file.tables);
-        // self.validate_unions(&file.unions);
+        self.validate_bits(&file.bits);
+        self.validate_enums(&file.enums);
+        self.validate_structs(&file.structs);
+        self.validate_tables(&file.tables);
+        self.validate_unions(&file.unions);
 
         // self.validate_protocols(&file.protocols);
         // self.validate_services(&file.services);
@@ -110,4 +110,49 @@ impl Validator {
     //         }
     //     }
     // }
+
+    fn validate_bits(&mut self, bits: &Vec<Spanned<Bits>>) {
+        for decl in bits {
+            self.validate_attributes(&decl.value.attributes, Placement::BitsDecl);
+            for member in &decl.value.members {
+                self.validate_attributes(&member.value.attributes, Placement::BitsMember);
+            }
+        }
+    }
+
+    fn validate_enums(&mut self, enums: &Vec<Spanned<Enum>>) {
+        for decl in enums {
+            self.validate_attributes(&decl.value.attributes, Placement::BitsDecl);
+            for member in &decl.value.members {
+                self.validate_attributes(&member.value.attributes, Placement::BitsMember);
+            }
+        }
+    }
+
+    fn validate_structs(&mut self, structs: &Vec<Spanned<Struct>>) {
+        for decl in structs {
+            self.validate_attributes(&decl.value.attributes, Placement::BitsDecl);
+            for member in &decl.value.members {
+                self.validate_attributes(&member.value.attributes, Placement::BitsMember);
+            }
+        }
+    }
+
+    fn validate_tables(&mut self, tables: &Vec<Spanned<Table>>) {
+        for decl in tables {
+            self.validate_attributes(&decl.value.attributes, Placement::BitsDecl);
+            for member in &decl.value.members {
+                self.validate_attributes(&member.value.attributes, Placement::BitsMember);
+            }
+        }
+    }
+
+    fn validate_unions(&mut self, unions: &Vec<Spanned<Union>>) {
+        for decl in unions {
+            self.validate_attributes(&decl.value.attributes, Placement::BitsDecl);
+            for member in &decl.value.members {
+                self.validate_attributes(&member.value.attributes, Placement::BitsMember);
+            }
+        }
+    }
 }
