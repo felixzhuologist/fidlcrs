@@ -1,4 +1,5 @@
 use crate::span;
+use std::fmt;
 
 pub mod attributes;
 pub mod errors;
@@ -8,6 +9,7 @@ pub type Spanned<T> = span::Spanned<T, usize>;
 
 pub type CompoundIdentifier = Vec<Spanned<String>>;
 
+// TODO: this is only used for parsing.
 pub enum Decl {
     Struct(Struct),
     Const(ConstDecl),
@@ -248,4 +250,53 @@ pub struct IntLiteral {
 pub enum Strictness {
     Strict,
     Flexible,
+}
+
+// TODO: what's a good name for this? it's all "things" that can be specified in FIDL
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum FidlType {
+    Attribute,
+    BitsDecl,
+    BitsMember,
+    ConstDecl,
+    EnumDecl,
+    EnumMember,
+    ProtocolDecl,
+    Library,
+    Method,
+    ServiceDecl,
+    ServiceMember,
+    StructDecl,
+    StructMember,
+    TableDecl,
+    TableMember,
+    TypeAliasDecl,
+    UnionDecl,
+    UnionMember,
+}
+
+impl fmt::Display for FidlType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use FidlType::*;
+        match self {
+            Attribute => write!(f, "attribute"),
+            BitsDecl => write!(f, "bits declaration"),
+            BitsMember => write!(f, "bits field"),
+            ConstDecl => write!(f, "const declaration"),
+            EnumDecl => write!(f, "enum declaration"),
+            EnumMember => write!(f, "bits field"),
+            ProtocolDecl => write!(f, "interface declaration"),
+            Library => write!(f, "library declaration"),
+            Method => write!(f, "interface method"),
+            ServiceDecl => write!(f, "service declaration"),
+            ServiceMember => write!(f, "service member"),
+            StructDecl => write!(f, "struct declaration"),
+            StructMember => write!(f, "struct field"),
+            TableDecl => write!(f, "table declaration"),
+            TableMember => write!(f, "table member"),
+            TypeAliasDecl => write!(f, "type alias"),
+            UnionDecl => write!(f, "union declaration"),
+            UnionMember => write!(f, "union field"),
+        }
+    }
 }

@@ -1,8 +1,9 @@
-use super::attributes::{AttributeSchema, Placement, BUILTIN_SCHEMAS};
+use super::attributes::{AttributeSchema, BUILTIN_SCHEMAS};
 use super::errors::Error;
 use super::*;
 use regex::Regex;
 use std::collections::HashMap;
+// use std::slice::Iter;
 
 pub fn validate_file(file: &File) -> Vec<Error> {
     let mut validator = Validator::new();
@@ -15,6 +16,8 @@ pub struct Validator {
     pub attribute_schemas: &'static HashMap<String, AttributeSchema>,
 }
 
+// TODO: shouldn't have to need to specify FidlTypes explicitly. They should be automatically
+// associated with their corresponding raw:: type
 impl Validator {
     pub fn new() -> Validator {
         // TODO: construct as not often as possible
@@ -25,8 +28,8 @@ impl Validator {
     }
 
     pub fn validate(&mut self, file: &File) {
-        self.validate_attributes(&file.attributes, Placement::Library);
-        self.validate_name(&file.name);
+        self.validate_attributes(&file.attributes, FidlType::Library);
+        self.validate_library_name(&file.name);
 
         // self.validate_imports(&file.imports);
 
@@ -42,22 +45,14 @@ impl Validator {
         // self.validate_services(&file.services);
     }
 
-    fn validate_attributes(&mut self, attrs: &Vec<Spanned<Attribute>>, placement: Placement) {
-        let mut seen: HashMap<String, usize> = HashMap::new();
-        for (i, attr) in attrs.iter().enumerate() {
+    fn validate_attributes(&mut self, attrs: &Vec<Spanned<Attribute>>, placement: FidlType) {
+        self.check_for_duplicates(attrs, FidlType::Attribute);
+        for attr in attrs {
             self.validate_attribute(&attr, placement);
-            if let Some(index) = seen.get(&attr.value.name.value) {
-                self.errors.push(Error::DuplicateAttributes {
-                    original: attrs[*index].clone(),
-                    duplicate: attr.clone(),
-                });
-            } else {
-                seen.insert(attr.value.name.value.clone(), i);
-            }
         }
     }
 
-    fn validate_attribute(&mut self, attr: &Spanned<Attribute>, placement: Placement) {
+    fn validate_attribute(&mut self, attr: &Spanned<Attribute>, placement: FidlType) {
         if let Some(ref schema) = self.attribute_schemas.get(&attr.value.name.value) {
             if !schema.is_placement_valid(placement) {
                 self.errors.push(Error::InvalidAttributePlacement {
@@ -77,7 +72,7 @@ impl Validator {
         }
     }
 
-    fn validate_name(&mut self, name: &CompoundIdentifier) {
+    fn validate_library_name(&mut self, name: &CompoundIdentifier) {
         let re = Regex::new(r"^[a-z][a-z0-9]*$").unwrap();
         for component in name.iter() {
             if !re.is_match(&component.value) {
@@ -113,46 +108,135 @@ impl Validator {
 
     fn validate_bits(&mut self, bits: &Vec<Spanned<Bits>>) {
         for decl in bits {
-            self.validate_attributes(&decl.value.attributes, Placement::BitsDecl);
+            self.validate_attributes(&decl.value.attributes, FidlType::BitsDecl);
+            self.check_for_duplicates(&decl.value.members, FidlType::BitsMember);
             for member in &decl.value.members {
-                self.validate_attributes(&member.value.attributes, Placement::BitsMember);
+                self.validate_attributes(&member.value.attributes, FidlType::BitsMember);
             }
         }
     }
 
     fn validate_enums(&mut self, enums: &Vec<Spanned<Enum>>) {
         for decl in enums {
-            self.validate_attributes(&decl.value.attributes, Placement::BitsDecl);
+            self.validate_attributes(&decl.value.attributes, FidlType::EnumDecl);
+            self.check_for_duplicates(&decl.value.members, FidlType::EnumMember);
             for member in &decl.value.members {
-                self.validate_attributes(&member.value.attributes, Placement::BitsMember);
+                self.validate_attributes(&member.value.attributes, FidlType::EnumMember);
             }
         }
     }
 
     fn validate_structs(&mut self, structs: &Vec<Spanned<Struct>>) {
         for decl in structs {
-            self.validate_attributes(&decl.value.attributes, Placement::BitsDecl);
+            self.validate_attributes(&decl.value.attributes, FidlType::StructDecl);
+            self.check_for_duplicates(&decl.value.members, FidlType::StructMember);
             for member in &decl.value.members {
-                self.validate_attributes(&member.value.attributes, Placement::BitsMember);
+                self.validate_attributes(&member.value.attributes, FidlType::StructMember);
             }
         }
     }
 
     fn validate_tables(&mut self, tables: &Vec<Spanned<Table>>) {
         for decl in tables {
-            self.validate_attributes(&decl.value.attributes, Placement::BitsDecl);
+            self.validate_attributes(&decl.value.attributes, FidlType::TableDecl);
+            self.check_for_duplicates(&decl.value.members, FidlType::TableMember);
             for member in &decl.value.members {
-                self.validate_attributes(&member.value.attributes, Placement::BitsMember);
+                self.validate_attributes(&member.value.attributes, FidlType::TableMember);
             }
         }
     }
 
     fn validate_unions(&mut self, unions: &Vec<Spanned<Union>>) {
         for decl in unions {
-            self.validate_attributes(&decl.value.attributes, Placement::BitsDecl);
+            self.validate_attributes(&decl.value.attributes, FidlType::UnionDecl);
+            self.check_for_duplicates(&decl.value.members, FidlType::UnionMember);
             for member in &decl.value.members {
-                self.validate_attributes(&member.value.attributes, Placement::BitsMember);
+                self.validate_attributes(&member.value.attributes, FidlType::UnionMember);
             }
+        }
+    }
+
+    // TODO: spans are not completely correct here
+    fn check_for_duplicates<T>(&mut self, values: &Vec<Spanned<T>>, decltype: FidlType)
+    where
+        T: Nameable,
+    {
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        for (i, val) in values.iter().enumerate() {
+            match val.name() {
+                None => continue,
+                Some(ref name) => {
+                    if let Some(index) = seen.get(*name) {
+                        self.errors.push(Error::DuplicateDefinition {
+                            original: values[*index].span,
+                            duplicate: val.span,
+                            decl_type: decltype,
+                            decl_name: name.to_string(),
+                        });
+                    } else {
+                        seen.insert(name.to_string(), i);
+                    }
+                }
+            };
+        }
+    }
+}
+
+trait Nameable {
+    fn name(&self) -> Option<&String>;
+}
+
+impl<T> Nameable for Spanned<T>
+where
+    T: Nameable,
+{
+    fn name(&self) -> Option<&String> {
+        self.value.name()
+    }
+}
+
+impl Nameable for Attribute {
+    fn name(&self) -> Option<&String> {
+        Some(&self.name.value)
+    }
+}
+
+impl Nameable for StructMember {
+    fn name(&self) -> Option<&String> {
+        Some(&self.name.value)
+    }
+}
+
+impl Nameable for BitsMember {
+    fn name(&self) -> Option<&String> {
+        Some(&self.name.value)
+    }
+}
+
+impl Nameable for EnumMember {
+    fn name(&self) -> Option<&String> {
+        Some(&self.name.value)
+    }
+}
+
+impl Nameable for TableMember {
+    fn name(&self) -> Option<&String> {
+        match &self.inner {
+            TableMemberInner::Reserved => None,
+            TableMemberInner::Used {
+                ty: _,
+                name,
+                default_value: _,
+            } => Some(&name.value),
+        }
+    }
+}
+
+impl Nameable for UnionMember {
+    fn name(&self) -> Option<&String> {
+        match &self.inner {
+            UnionMemberInner::Reserved => None,
+            UnionMemberInner::Used { ty: _, name } => Some(&name.value),
         }
     }
 }

@@ -1,0 +1,23 @@
+library test;
+
+struct Foo {
+  bool foo;
+  bool foo;
+};
+
+union Bar {
+  1: reserved;
+  2: reserved;
+  3: bool bar;
+  4: reserved;
+  5: reserved;
+  6: uint8 bar;
+};
+
+enum Baz {
+  FOO = 1;
+  BAR = 2;
+  BAZ = 3;
+  FOO = 1;
+};
+

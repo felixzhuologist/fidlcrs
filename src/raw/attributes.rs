@@ -1,6 +1,5 @@
 use super::errors::Error;
-use crate::raw::Attribute;
-use crate::raw::Spanned;
+use crate::raw::{Attribute, FidlType, Spanned};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -10,7 +9,7 @@ lazy_static! {
         builtins.insert(
             "Discoverable".to_string(),
             AttributeSchema {
-                placements: vec![Placement::ProtocolDecl],
+                placements: vec![FidlType::ProtocolDecl],
                 allowed_value: None,
             },
         );
@@ -24,7 +23,7 @@ lazy_static! {
         builtins.insert(
             "FragileBase".to_string(),
             AttributeSchema {
-                placements: vec![Placement::ProtocolDecl],
+                placements: vec![FidlType::ProtocolDecl],
                 allowed_value: Some("Simple".to_string()),
             },
         );
@@ -32,11 +31,11 @@ lazy_static! {
             "MaxBytes".to_string(),
             AttributeSchema {
                 placements: vec![
-                    Placement::ProtocolDecl,
-                    Placement::Method,
-                    Placement::StructDecl,
-                    Placement::TableDecl,
-                    Placement::UnionDecl,
+                    FidlType::ProtocolDecl,
+                    FidlType::Method,
+                    FidlType::StructDecl,
+                    FidlType::TableDecl,
+                    FidlType::UnionDecl,
                 ],
                 allowed_value: None,
             },
@@ -45,11 +44,11 @@ lazy_static! {
             "MaxHandles".to_string(),
             AttributeSchema {
                 placements: vec![
-                    Placement::ProtocolDecl,
-                    Placement::Method,
-                    Placement::StructDecl,
-                    Placement::TableDecl,
-                    Placement::UnionDecl,
+                    FidlType::ProtocolDecl,
+                    FidlType::Method,
+                    FidlType::StructDecl,
+                    FidlType::TableDecl,
+                    FidlType::UnionDecl,
                 ],
                 allowed_value: None,
             },
@@ -57,21 +56,21 @@ lazy_static! {
         builtins.insert(
             "Result".to_string(),
             AttributeSchema {
-                placements: vec![Placement::UnionDecl],
+                placements: vec![FidlType::UnionDecl],
                 allowed_value: Some("".to_string()),
             },
         );
         builtins.insert(
             "Selector".to_string(),
             AttributeSchema {
-                placements: vec![Placement::Method],
+                placements: vec![FidlType::Method],
                 allowed_value: None,
             },
         );
         builtins.insert(
             "Transport".to_string(),
             AttributeSchema {
-                placements: vec![Placement::ProtocolDecl],
+                placements: vec![FidlType::ProtocolDecl],
                 allowed_value: None,
             },
         );
@@ -80,13 +79,13 @@ lazy_static! {
 }
 
 pub struct AttributeSchema {
-    placements: Vec<Placement>,
+    placements: Vec<FidlType>,
     allowed_value: Option<String>,
     // TODO: check_constraint: fn() -> bool
 }
 
 impl AttributeSchema {
-    pub fn is_placement_valid(&self, placement: Placement) -> bool {
+    pub fn is_placement_valid(&self, placement: FidlType) -> bool {
         self.placements.is_empty() || self.placements.contains(&placement)
     }
 
@@ -99,54 +98,6 @@ impl AttributeSchema {
                 None => allowed == "",
                 Some(ref value) => allowed == &value.value,
             },
-        }
-    }
-}
-
-// TODO: this shouldn't need to exist. or, at least it shouldn't need to be
-// specified explicitly in the function call
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Placement {
-    BitsDecl,
-    BitsMember,
-    ConstDecl,
-    EnumDecl,
-    EnumMember,
-    ProtocolDecl,
-    Library,
-    Method,
-    ServiceDecl,
-    ServiceMember,
-    StructDecl,
-    StructMember,
-    TableDecl,
-    TableMember,
-    TypeAliasDecl,
-    UnionDecl,
-    UnionMember,
-}
-
-impl fmt::Display for Placement {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use Placement::*;
-        match self {
-            BitsDecl => write!(f, "bits declaration"),
-            BitsMember => write!(f, "bits field"),
-            ConstDecl => write!(f, "const declaration"),
-            EnumDecl => write!(f, "enum declaration"),
-            EnumMember => write!(f, "bits field"),
-            ProtocolDecl => write!(f, "interface declaration"),
-            Library => write!(f, "library declaration"),
-            Method => write!(f, "interface method"),
-            ServiceDecl => write!(f, "service declaration"),
-            ServiceMember => write!(f, "service member"),
-            StructDecl => write!(f, "struct declaration"),
-            StructMember => write!(f, "struct field"),
-            TableDecl => write!(f, "table declaration"),
-            TableMember => write!(f, "table member"),
-            TypeAliasDecl => write!(f, "type alias"),
-            UnionDecl => write!(f, "union declaration"),
-            UnionMember => write!(f, "union field"),
         }
     }
 }
