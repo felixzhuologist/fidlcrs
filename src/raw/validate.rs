@@ -35,7 +35,7 @@ impl Validator {
         // self.validate_imports(&file.imports);
 
         // self.validate_aliases(&file.aliases);
-        // self.validate_consts(&file.consts);
+        self.validate_consts(&file.consts);
         self.validate_bits(&file.bits);
         self.validate_enums(&file.enums);
         self.validate_structs(&file.structs);
@@ -84,28 +84,11 @@ impl Validator {
         }
     }
 
-    // Note: fidlc allows two ways to reference an import with an alias:
-    // either using the alias, or the full path. (the docs also say that using
-    // the name is valid but fidlc doesn't actually do that - bug?). for simplicity,
-    // right now if an alias is used, the library must be referenced by that alias
-    // fn validate_imports(&mut self, imports: &Vec<Spanned<Import>>) {
-    //     for import in imports.iter() {
-    //         if !import.attributes.is_empty() {
-    //             unimplemented!();
-    //         }
-    //         // the actual name the must be used to reference this import
-    //         let reference_name = match import.value.alias {
-    //             Some(alias) => alias.value.clone(),
-    //             None => {
-    //                 let mut components: Vector<String> = import.name.iter().map(|c| c.value.clone());
-    //                 components.join(".")
-    //             }
-    //         }
-    //         if !self.imported_libraries.insert(reference_name) {
-
-    //         }
-    //     }
-    // }
+    fn validate_consts(&mut self, consts: &Vec<Spanned<ConstDecl>>) {
+        for decl in consts {
+            self.validate_attributes(&decl.value.attributes, FidlType::ConstDecl);
+        }
+    }
 
     fn validate_bits(&mut self, bits: &Vec<Spanned<Bits>>) {
         for decl in bits {
