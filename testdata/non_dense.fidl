@@ -9,3 +9,12 @@ table Foo {
   16: bool foo;
 };
 
+union bar {
+  1: reserved;
+  2: reserved;
+  3: reserved;
+  9: reserved;
+  10: reserved;
+  16: bool foo;
+};
+

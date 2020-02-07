@@ -240,7 +240,7 @@ pub struct Type {
 //     pub constraint: Option<Spanned<String>>,
 // }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct IntLiteral {
     pub value: u64,
     pub is_negative: bool,

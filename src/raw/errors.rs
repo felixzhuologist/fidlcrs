@@ -1,11 +1,9 @@
+use crate::lexer::Span;
 use crate::raw::{FidlType, Spanned};
 use crate::source_file::SourceFile;
-use crate::span;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 use std::cmp;
 use std::fmt;
-
-type Span = span::Span<usize>;
 
 pub enum Error {
     DuplicateDefinition {
@@ -23,7 +21,7 @@ pub enum Error {
         value: Spanned<String>,
     },
     InvalidLibraryName(Span),
-    EmptyTableOrUnion(Span, FidlType),
+    EmptyTableOrUnion(Span),
     OobOrdinals {
         decl_span: Span,
         ordinal_spans: Vec<Span>,
@@ -187,19 +185,19 @@ impl Error {
                     }],
                 }
             }
-            EmptyTableOrUnion(span, table_or_union) => {
+            EmptyTableOrUnion(span) => {
                 let (line_start, source) = src.surrounding_lines(span.start, span.end);
                 let source_start = src.lines.offset_at_line_number(line_start);
 
                 Snippet {
                     title: Some(Annotation {
-                        label: Some(format!("empty {}", table_or_union)),
+                        label: Some("empty table or union".to_string()),
                         id: None,
                         annotation_type: AnnotationType::Error,
                     }),
                     footer: vec![Annotation {
                         label: Some(
-                            "try using an empty struct to define a placeholder variant".to_string(),
+                            "try using an empty struct to define a placeholder member".to_string(),
                         ),
                         id: None,
                         annotation_type: AnnotationType::Help,
@@ -210,7 +208,8 @@ impl Error {
                         origin: Some(src.path.clone()),
                         fold: false,
                         annotations: vec![SourceAnnotation {
-                            label: format!("{} must have at least one member", table_or_union),
+                            label: "tables and unions must have at least one non reserved member"
+                                .to_string(),
                             annotation_type: AnnotationType::Error,
                             range: (span.start - source_start, span.end - source_start),
                         }],

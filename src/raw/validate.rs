@@ -1,6 +1,7 @@
 use super::attributes::{AttributeSchema, BUILTIN_SCHEMAS};
 use super::errors::Error;
 use super::*;
+use crate::lexer::Span;
 use regex::Regex;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -144,57 +145,7 @@ impl Validator {
             for member in &decl.value.members {
                 self.validate_attributes(&member.value.attributes, FidlType::TableMember);
             }
-
-            let is_empty = decl
-                .value
-                .members
-                .iter()
-                .filter(|&member| member.value.is_used())
-                .peekable()
-                .peek()
-                .is_none();
-            if is_empty {
-                self.errors
-                    .push(Error::EmptyTableOrUnion(decl.span, FidlType::TableDecl));
-            }
-
-            let (ordinals, oob_ordinals): (Vec<_>, Vec<_>) = decl
-                .value
-                .members
-                .iter()
-                .map(|member| {
-                    let IntLiteral { value, is_negative } = member.value.ordinal.value;
-                    let ord_val = u32::try_from(value);
-                    if is_negative || value == 0 || ord_val.is_err() {
-                        Err(member.span)
-                    } else {
-                        Ok(ord_val.unwrap())
-                    }
-                })
-                .partition(Result::is_ok);
-            if !oob_ordinals.is_empty() {
-                self.errors.push(Error::OobOrdinals {
-                    decl_span: decl.span,
-                    ordinal_spans: oob_ordinals.into_iter().map(Result::unwrap_err).collect(),
-                });
-            }
-            let mut ordinals: Vec<u32> = ordinals.into_iter().map(Result::unwrap).collect();
-            ordinals.sort();
-            let mut missing_ranges: Vec<(u32, u32)> = Vec::new();
-            let mut next_expected = 1;
-            for ord in ordinals {
-                if ord != next_expected {
-                    missing_ranges.push((next_expected, ord - 1));
-                }
-                next_expected = ord + 1;
-            }
-            if !missing_ranges.is_empty() {
-                self.errors.push(Error::NonDenseOrdinals {
-                    decl_span: decl.span,
-                    name_span: decl.value.name.span,
-                    missing_ranges: missing_ranges,
-                });
-            }
+            self.check_ordinals(&decl.value.members, decl.span, decl.value.name.span);
         }
     }
 
@@ -205,6 +156,7 @@ impl Validator {
             for member in &decl.value.members {
                 self.validate_attributes(&member.value.attributes, FidlType::UnionMember);
             }
+            self.check_ordinals(&decl.value.members, decl.span, decl.value.name.span);
         }
     }
 
@@ -230,6 +182,61 @@ impl Validator {
                     }
                 }
             };
+        }
+    }
+
+    /// Checks that a set of ordinal members are valid:
+    ///   - at least one non reserved member
+    ///   - not out of bounds ordinals (i.e. they all fall in [1, 0xffff_ffff])
+    ///   - they form a dense space starting at 1
+    fn check_ordinals<T>(&mut self, values: &Vec<Spanned<T>>, decl_span: Span, decl_name_span: Span)
+    where
+        T: HasOrdinal,
+    {
+        let is_empty = values
+            .iter()
+            .filter(|&member| !member.value.is_reserved())
+            .peekable()
+            .peek()
+            .is_none();
+        if is_empty {
+            self.errors.push(Error::EmptyTableOrUnion(decl_span));
+        }
+
+        let (ordinals, oob_ordinals): (Vec<_>, Vec<_>) = values
+            .iter()
+            .map(|member| {
+                let IntLiteral { value, is_negative } = member.value.ordinal().value;
+                let ord_val = u32::try_from(value);
+                if is_negative || value == 0 || ord_val.is_err() {
+                    Err(member.span)
+                } else {
+                    Ok(ord_val.unwrap())
+                }
+            })
+            .partition(Result::is_ok);
+        if !oob_ordinals.is_empty() {
+            self.errors.push(Error::OobOrdinals {
+                decl_span,
+                ordinal_spans: oob_ordinals.into_iter().map(Result::unwrap_err).collect(),
+            });
+        }
+        let mut ordinals: Vec<u32> = ordinals.into_iter().map(Result::unwrap).collect();
+        ordinals.sort();
+        let mut missing_ranges: Vec<(u32, u32)> = Vec::new();
+        let mut next_expected = 1;
+        for ord in ordinals {
+            if ord != next_expected {
+                missing_ranges.push((next_expected, ord - 1));
+            }
+            next_expected = ord + 1;
+        }
+        if !missing_ranges.is_empty() {
+            self.errors.push(Error::NonDenseOrdinals {
+                decl_span,
+                name_span: decl_name_span,
+                missing_ranges: missing_ranges,
+            });
         }
     }
 }
@@ -293,11 +300,31 @@ impl Nameable for UnionMember {
     }
 }
 
-impl TableMember {
-    fn is_used(&self) -> bool {
+trait HasOrdinal {
+    fn is_reserved(&self) -> bool;
+    fn ordinal(&self) -> Spanned<IntLiteral>;
+}
+
+impl HasOrdinal for TableMember {
+    fn is_reserved(&self) -> bool {
         match &self.inner {
-            TableMemberInner::Reserved => false,
-            _ => true,
+            TableMemberInner::Reserved => true,
+            _ => false,
         }
+    }
+    fn ordinal(&self) -> Spanned<IntLiteral> {
+        self.ordinal
+    }
+}
+
+impl HasOrdinal for UnionMember {
+    fn is_reserved(&self) -> bool {
+        match &self.inner {
+            UnionMemberInner::Reserved => true,
+            _ => false,
+        }
+    }
+    fn ordinal(&self) -> Spanned<IntLiteral> {
+        self.ordinal
     }
 }

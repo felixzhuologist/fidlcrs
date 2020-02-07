@@ -2,8 +2,11 @@ use std::fmt;
 use std::str::Chars;
 
 use self::Error::*;
+use crate::span;
 use crate::span::{spanned, Location, Spanned};
 use crate::token::Token;
+
+pub type Span = span::Span<usize>;
 
 struct CharLocations<'input> {
     location: Location,
