@@ -1,14 +1,16 @@
 use crate::raw::{FidlType, Spanned};
 use crate::source_file::SourceFile;
-use crate::span::Span;
+use crate::span;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 use std::cmp;
 use std::fmt;
 
+type Span = span::Span<usize>;
+
 pub enum Error {
     DuplicateDefinition {
-        original: Span<usize>,
-        duplicate: Span<usize>,
+        original: Span,
+        duplicate: Span,
         decl_type: FidlType,
         decl_name: String,
     },
@@ -20,8 +22,12 @@ pub enum Error {
         name: Spanned<String>,
         value: Spanned<String>,
     },
-    InvalidLibraryName(Span<usize>),
-    EmptyTableOrUnion(Span<usize>, FidlType),
+    InvalidLibraryName(Span),
+    EmptyTableOrUnion(Span, FidlType),
+    OobOrdinals {
+        decl_span: Span,
+        ordinal_spans: Vec<Span>,
+    },
 }
 
 impl fmt::Display for Error {
@@ -47,7 +53,7 @@ impl Error {
                 let (line_start, source) = src.surrounding_lines(src_start, src_end);
                 let source_start = src.lines.offset_at_line_number(line_start);
 
-                let footer = Vec::new();
+                // TODO: provide help for duplicate attributes (in particular doc comments)
                 // if original.value.name.value == "Doc" || duplicate.value.name.value == "Doc" {
                 //     footer.push(Annotation {
                 //         label: Some(
@@ -65,7 +71,7 @@ impl Error {
                         id: None,
                         annotation_type: AnnotationType::Error,
                     }),
-                    footer: footer,
+                    footer: vec![],
                     slices: vec![Slice {
                         source,
                         line_start,
@@ -197,6 +203,42 @@ impl Error {
                             annotation_type: AnnotationType::Error,
                             range: (span.start - source_start, span.end - source_start),
                         }],
+                    }],
+                }
+            }
+            OobOrdinals {
+                decl_span,
+                ordinal_spans,
+            } => {
+                let (line_start, source) = src.surrounding_lines(decl_span.start, decl_span.end);
+                let source_start = src.lines.offset_at_line_number(line_start);
+
+                let annotations: Vec<SourceAnnotation> = ordinal_spans
+                    .into_iter()
+                    .map(|span| SourceAnnotation {
+                        label: "ordinal out of bounds".to_string(),
+                        annotation_type: AnnotationType::Error,
+                        range: (span.start - source_start, span.end - source_start),
+                    })
+                    .collect();
+
+                Snippet {
+                    title: Some(Annotation {
+                        label: Some("invalid ordinal values".to_string()),
+                        id: None,
+                        annotation_type: AnnotationType::Error,
+                    }),
+                    footer: vec![Annotation {
+                        label: Some("ordinals be in [1, 0xffff_ffff]".to_string()),
+                        id: None,
+                        annotation_type: AnnotationType::Help,
+                    }],
+                    slices: vec![Slice {
+                        source,
+                        line_start,
+                        origin: Some(src.path.clone()),
+                        fold: false,
+                        annotations,
                     }],
                 }
             }
