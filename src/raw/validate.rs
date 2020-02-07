@@ -43,7 +43,7 @@ impl Validator {
         self.validate_unions(&file.unions);
 
         self.validate_protocols(&file.protocols);
-        // self.validate_services(&file.services);
+        self.validate_services(&file.services);
     }
 
     fn validate_attributes(&mut self, attrs: &Vec<Spanned<Attribute>>, placement: FidlType) {
@@ -179,6 +179,15 @@ impl Validator {
                         self.validate_attributes(&param.value.attributes, FidlType::Parameter);
                     }
                 }
+            }
+        }
+    }
+
+    fn validate_services(&mut self, services: &Vec<Spanned<Service>>) {
+        for decl in services {
+            self.validate_attributes(&decl.value.attributes, FidlType::ServiceDecl);
+            for member in &decl.value.members {
+                self.validate_attributes(&member.value.attributes, FidlType::ServiceMember);
             }
         }
     }
