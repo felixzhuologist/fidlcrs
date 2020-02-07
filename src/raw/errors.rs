@@ -19,6 +19,7 @@ pub enum Error {
         name: Spanned<String>,
         value: Spanned<String>,
     },
+    InvalidLibraryName(Span<usize>),
 }
 
 impl fmt::Display for Error {
@@ -140,6 +141,31 @@ impl Error {
                                 "attribute {} cannot have value \"{}\"",
                                 name.value, value.value
                             ),
+                            annotation_type: AnnotationType::Error,
+                            range: (span.start - source_start, span.end - source_start),
+                        }],
+                    }],
+                }
+            }
+            InvalidLibraryName(span) => {
+                let (line_start, source) = src.surrounding_lines(span.start, span.end);
+                let source_start = src.lines.offset_at_line_number(line_start);
+
+                Snippet {
+                    title: Some(Annotation {
+                        label: Some("invalid library name".to_string()),
+                        id: None,
+                        annotation_type: AnnotationType::Error,
+                    }),
+                    footer: vec![],
+                    slices: vec![Slice {
+                        source,
+                        line_start,
+                        origin: Some(src.path.clone()),
+                        fold: false,
+                        annotations: vec![SourceAnnotation {
+                            label: "library name components must match ^[a-z][a-z0-9]*$"
+                                .to_string(),
                             annotation_type: AnnotationType::Error,
                             range: (span.start - source_start, span.end - source_start),
                         }],
