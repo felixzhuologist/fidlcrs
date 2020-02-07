@@ -5,7 +5,6 @@ use crate::lexer::Span;
 use regex::Regex;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-// use std::slice::Iter;
 
 pub fn validate_file(file: &File) -> Vec<Error> {
     let mut validator = Validator::new();
@@ -43,7 +42,7 @@ impl Validator {
         self.validate_tables(&file.tables);
         self.validate_unions(&file.unions);
 
-        // self.validate_protocols(&file.protocols);
+        self.validate_protocols(&file.protocols);
         // self.validate_services(&file.services);
     }
 
@@ -157,6 +156,30 @@ impl Validator {
                 self.validate_attributes(&member.value.attributes, FidlType::UnionMember);
             }
             self.check_ordinals(&decl.value.members, decl.span, decl.value.name.span);
+        }
+    }
+
+    fn validate_protocols(&mut self, interfaces: &Vec<Spanned<Protocol>>) {
+        for iface in interfaces {
+            self.validate_attributes(&iface.value.attributes, FidlType::ProtocolDecl);
+            // Note: we check for duplicate compose statements after name resolution, once we
+            // know which protocols each name points to.
+            self.check_for_duplicates(&iface.value.methods, FidlType::ProtocolDecl);
+            for method in &iface.value.methods {
+                self.validate_attributes(&method.value.attributes, FidlType::Method);
+                if let Some(request) = &method.value.request {
+                    self.check_for_duplicates(request, FidlType::Parameter);
+                    for param in request {
+                        self.validate_attributes(&param.value.attributes, FidlType::Parameter);
+                    }
+                }
+                if let Some(response) = &method.value.response {
+                    self.check_for_duplicates(response, FidlType::Parameter);
+                    for param in response {
+                        self.validate_attributes(&param.value.attributes, FidlType::Parameter);
+                    }
+                }
+            }
         }
     }
 
@@ -297,6 +320,18 @@ impl Nameable for UnionMember {
             UnionMemberInner::Reserved => None,
             UnionMemberInner::Used { ty: _, name } => Some(&name.value),
         }
+    }
+}
+
+impl Nameable for Method {
+    fn name(&self) -> Option<&String> {
+        Some(&self.name.value)
+    }
+}
+
+impl Nameable for Parameter {
+    fn name(&self) -> Option<&String> {
+        Some(&self.name.value)
     }
 }
 
