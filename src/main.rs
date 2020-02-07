@@ -22,26 +22,19 @@ pub mod token;
 /// The FIDL compiler, rust edition
 struct Args {
     #[argh(option)]
-    /// specify a FIDL file
-    file: String,
+    /// a comma separated list of fidl files corresponding to a single library
+    files: String,
 }
 
 fn main() {
     let args: Args = argh::from_env();
-    let path = args.file;
-    let file = File::open(&path);
-    assert!(file.is_ok(), "Could not open file: {}", path);
-
-    let mut contents = String::new();
-    let read_result = file.unwrap().read_to_string(&mut contents);
-    assert!(read_result.is_ok(), "Could not read file: {}", path);
-
-    contents = contents.replace('\r', "");
+    let files: Vec<String> = args.files.split(',').map(str::to_string).collect();
 
     let mut lib_cx = source_file::FileMap::new();
     let mut error_cx = errors::ErrorCx::default();
-    {
-        let src_file = lib_cx.add_file(path, contents);
+    for path in files {
+        let raw_contents = read_file(&path);
+        let src_file = lib_cx.add_file(path, raw_contents);
         match parser::parse(src_file) {
             Ok(file) => {
                 // could just .extend(.map) if this were a vector
@@ -56,4 +49,15 @@ fn main() {
         };
     }
     error_cx.print_errors();
+}
+
+fn read_file(path: &String) -> String {
+    let file = File::open(path);
+    assert!(file.is_ok(), "Could not open file: {}", path);
+
+    let mut contents = String::new();
+    let read_result = file.unwrap().read_to_string(&mut contents);
+    assert!(read_result.is_ok(), "Could not read file: {}", path);
+
+    contents.replace('\r', "")
 }

@@ -3,7 +3,6 @@ use crate::raw::{FidlType, Spanned};
 use crate::source_file::SourceFile;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 use std::cmp;
-use std::fmt;
 
 pub enum Error {
     DuplicateDefinition {
@@ -31,12 +30,6 @@ pub enum Error {
         name_span: Span,
         missing_ranges: Vec<(u32, u32)>,
     },
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unimplemented!()
-    }
 }
 
 impl Error {

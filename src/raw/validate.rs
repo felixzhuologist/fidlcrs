@@ -33,8 +33,8 @@ impl Validator {
         self.validate_library_name(&file.name);
 
         // self.validate_imports(&file.imports);
-
         // self.validate_aliases(&file.aliases);
+
         self.validate_consts(&file.consts);
         self.validate_bits(&file.bits);
         self.validate_enums(&file.enums);
