@@ -1,4 +1,4 @@
-use crate::raw::{Attribute, FidlType, Spanned};
+use crate::raw::{FidlType, Spanned};
 use crate::source_file::SourceFile;
 use crate::span::Span;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
@@ -21,6 +21,7 @@ pub enum Error {
         value: Spanned<String>,
     },
     InvalidLibraryName(Span<usize>),
+    EmptyTableOrUnion(Span<usize>, FidlType),
 }
 
 impl fmt::Display for Error {
@@ -169,6 +170,30 @@ impl Error {
                         annotations: vec![SourceAnnotation {
                             label: "library name components must match ^[a-z][a-z0-9]*$"
                                 .to_string(),
+                            annotation_type: AnnotationType::Error,
+                            range: (span.start - source_start, span.end - source_start),
+                        }],
+                    }],
+                }
+            }
+            EmptyTableOrUnion(span, table_or_union) => {
+                let (line_start, source) = src.surrounding_lines(span.start, span.end);
+                let source_start = src.lines.offset_at_line_number(line_start);
+
+                Snippet {
+                    title: Some(Annotation {
+                        label: Some(format!("empty {}", table_or_union)),
+                        id: None,
+                        annotation_type: AnnotationType::Error,
+                    }),
+                    footer: vec![],
+                    slices: vec![Slice {
+                        source,
+                        line_start,
+                        origin: Some(src.path.clone()),
+                        fold: false,
+                        annotations: vec![SourceAnnotation {
+                            label: format!("{} must have at least one member", table_or_union),
                             annotation_type: AnnotationType::Error,
                             range: (span.start - source_start, span.end - source_start),
                         }],

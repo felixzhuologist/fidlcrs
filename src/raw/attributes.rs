@@ -1,7 +1,5 @@
-use super::errors::Error;
-use crate::raw::{Attribute, FidlType, Spanned};
+use crate::raw::{FidlType, Spanned};
 use std::collections::HashMap;
-use std::fmt;
 
 lazy_static! {
     pub static ref BUILTIN_SCHEMAS: HashMap<String, AttributeSchema> = {

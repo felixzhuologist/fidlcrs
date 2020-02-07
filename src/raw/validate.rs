@@ -108,8 +108,8 @@ impl Validator {
 
     fn validate_bits(&mut self, bits: &Vec<Spanned<Bits>>) {
         for decl in bits {
-            self.validate_attributes(&decl.value.attributes, FidlType::BitsDecl);
             self.check_for_duplicates(&decl.value.members, FidlType::BitsMember);
+            self.validate_attributes(&decl.value.attributes, FidlType::BitsDecl);
             for member in &decl.value.members {
                 self.validate_attributes(&member.value.attributes, FidlType::BitsMember);
             }
@@ -118,8 +118,8 @@ impl Validator {
 
     fn validate_enums(&mut self, enums: &Vec<Spanned<Enum>>) {
         for decl in enums {
-            self.validate_attributes(&decl.value.attributes, FidlType::EnumDecl);
             self.check_for_duplicates(&decl.value.members, FidlType::EnumMember);
+            self.validate_attributes(&decl.value.attributes, FidlType::EnumDecl);
             for member in &decl.value.members {
                 self.validate_attributes(&member.value.attributes, FidlType::EnumMember);
             }
@@ -128,8 +128,8 @@ impl Validator {
 
     fn validate_structs(&mut self, structs: &Vec<Spanned<Struct>>) {
         for decl in structs {
-            self.validate_attributes(&decl.value.attributes, FidlType::StructDecl);
             self.check_for_duplicates(&decl.value.members, FidlType::StructMember);
+            self.validate_attributes(&decl.value.attributes, FidlType::StructDecl);
             for member in &decl.value.members {
                 self.validate_attributes(&member.value.attributes, FidlType::StructMember);
             }
@@ -138,10 +138,23 @@ impl Validator {
 
     fn validate_tables(&mut self, tables: &Vec<Spanned<Table>>) {
         for decl in tables {
-            self.validate_attributes(&decl.value.attributes, FidlType::TableDecl);
             self.check_for_duplicates(&decl.value.members, FidlType::TableMember);
+            self.validate_attributes(&decl.value.attributes, FidlType::TableDecl);
             for member in &decl.value.members {
                 self.validate_attributes(&member.value.attributes, FidlType::TableMember);
+            }
+
+            let is_empty = decl
+                .value
+                .members
+                .iter()
+                .filter(|&member| member.value.is_used())
+                .peekable()
+                .peek()
+                .is_none();
+            if is_empty {
+                self.errors
+                    .push(Error::EmptyTableOrUnion(decl.span, FidlType::TableDecl));
             }
         }
     }
@@ -237,6 +250,15 @@ impl Nameable for UnionMember {
         match &self.inner {
             UnionMemberInner::Reserved => None,
             UnionMemberInner::Used { ty: _, name } => Some(&name.value),
+        }
+    }
+}
+
+impl TableMember {
+    fn is_used(&self) -> bool {
+        match &self.inner {
+            TableMemberInner::Reserved => false,
+            _ => true,
         }
     }
 }
