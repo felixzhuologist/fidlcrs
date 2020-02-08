@@ -1,35 +1,22 @@
-use crate::span;
-use std::fmt;
+use crate::raw::{Attribute, IntLiteral, LibraryName, Literal, Spanned, Strictness};
+use std::collections::HashMap;
 
-pub mod attributes;
 pub mod errors;
-pub mod validate;
-
-pub type Spanned<T> = span::Spanned<T, usize>;
-
-// The natural thing that lalrpop wants to parse is a Vec<Spanned<String>>,
-// but for regular compound identifiers we discard the spans of individual
-// elements since they're not used.
-pub type LibraryName = Vec<Spanned<String>>;
-pub type CompoundIdentifier = Spanned<Vec<String>>;
+pub mod resolve;
 
 #[derive(Debug)]
-pub struct File {
+pub struct Library {
     pub attributes: Vec<Spanned<Attribute>>,
     pub name: LibraryName,
-    pub imports: Vec<Spanned<Import>>,
-    pub decls: Vec<Spanned<Decl>>,
+    pub decls: HashMap<String, Spanned<Decl>>,
 }
 
-// TODO: compare this rep and the resolved version. they might be able to be
+// TODO: compare this and the raw version. they might be able to be
 // refactored into specializations of a common ast
+// so far the only differences are:
+//   - Name instead of CompoundIdentifier
+//   - flat::Type instead of raw::Type
 
-/// The possible toplevel things that can be declared in a FIDL file. They
-/// comprise of:
-///   - aliases, which store a name to another `Decl`
-///   - `const`s, which declare a value and have a type
-///   - types (structs, bits, enums, tables, and unions)
-///   - protocols (protocol, service)
 #[derive(Debug)]
 pub enum Decl {
     Alias(Alias),
@@ -44,15 +31,6 @@ pub enum Decl {
 
     Protocol(Protocol),
     Service(Service),
-}
-
-#[derive(Debug, Clone)]
-pub struct Import {
-    // This is actually not allowed but we allow it at the lexing/parsing stage
-    // to avoid grammar ambiguities
-    pub attributes: Vec<Spanned<Attribute>>,
-    pub name: CompoundIdentifier,
-    pub alias: Option<Spanned<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -172,7 +150,7 @@ pub struct Protocol {
     pub attributes: Vec<Spanned<Attribute>>,
     pub name: Spanned<String>,
     pub methods: Vec<Spanned<Method>>,
-    pub compose: Vec<CompoundIdentifier>,
+    pub compose: Vec<Name>,
 }
 
 #[derive(Debug, Clone)]
@@ -201,105 +179,97 @@ pub struct Service {
 #[derive(Debug, Clone)]
 pub struct ServiceMember {
     pub attributes: Vec<Spanned<Attribute>>,
-    pub protocol: CompoundIdentifier,
+    pub protocol: Name,
     pub name: Spanned<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Attribute {
-    pub name: Spanned<String>,
-    pub value: Option<Spanned<String>>,
 }
 
 #[derive(Debug, Clone)]
 pub enum ConstVal {
-    Identifier(CompoundIdentifier),
+    Identifier(Name),
     Literal(Spanned<Literal>),
 }
 
 #[derive(Debug, Clone)]
-pub enum Literal {
-    Str(String),
-    Int(IntLiteral),
-    Float(f64),
-    True,
-    False,
+pub enum Type {
+    Array {
+        element_type: Box<Type>,
+        size: ConstVal,
+    },
+    Vector {
+        element_type: Box<Type>,
+        maybe_max_size: Option<ConstVal>,
+        nullable: bool,
+    },
+    Str {
+        maybe_max_size: Option<ConstVal>,
+        nullable: bool,
+    },
+    Handle {
+        subtype: Option<HandleSubtype>,
+        nullable: bool,
+    },
+    ServerEnd {
+        protocol: Option<Spanned<String>>,
+        nullable: bool,
+    },
+    Primitive(PrimitiveSubtype),
+    Identifier {
+        name: Spanned<Name>,
+        Layout: Option<Spanned<Box<Type>>>,
+        constraint: Option<Spanned<ConstVal>>,
+        nullable: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
-pub struct Type {
-    pub name: CompoundIdentifier,
-    pub layout: Option<Spanned<Box<Type>>>,
-    pub constraint: Option<Spanned<ConstVal>>,
-    // doesn't make sense to have a Span in the false case. so just use the end
-    // of the previous element
-    pub nullable: bool,
+pub struct Name {
+    pub library: Option<String>,
+    pub name: String,
+    pub member: Option<String>,
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct IntLiteral {
-    pub value: u64,
-    pub is_negative: bool,
+pub enum HandleSubtype {
+    Bti,
+    Channel,
+    DebugLog,
+    Event,
+    Eventpair,
+    Exception,
+    Fifo,
+    Guest,
+    Interrupt,
+    Iommu,
+    Job,
+    Pager,
+    PciDevice,
+    Pmt,
+    Port,
+    Process,
+    Profile,
+    Resource,
+    Socket,
+    SuspendToken,
+    Thread,
+    Timer,
+    VCpu,
+    Vmar,
+    Vmo,
 }
 
-#[derive(Debug, Clone)]
-pub enum Strictness {
-    Strict,
-    Flexible,
-}
-
-// TODO: what's a good name for this? it's all "things" that can be specified in FIDL
-// TODO: move into a separate file
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum FidlType {
-    Alias,
-    Attribute,
-    BitsDecl,
-    BitsMember,
-    ConstDecl,
-    EnumDecl,
-    EnumMember,
-    ProtocolDecl,
-    Library,
-    Method,
-    Parameter,
-    ServiceDecl,
-    ServiceMember,
-    StructDecl,
-    StructMember,
-    TableDecl,
-    TableMember,
-    TypeAliasDecl,
-    UnionDecl,
-    UnionMember,
-}
-
-impl fmt::Display for FidlType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use FidlType::*;
-        match self {
-            Alias => write!(f, "alias"),
-            Attribute => write!(f, "attribute"),
-            BitsDecl => write!(f, "bits declaration"),
-            BitsMember => write!(f, "bits field"),
-            ConstDecl => write!(f, "const declaration"),
-            EnumDecl => write!(f, "enum declaration"),
-            EnumMember => write!(f, "bits field"),
-            ProtocolDecl => write!(f, "interface declaration"),
-            Library => write!(f, "library declaration"),
-            Method => write!(f, "interface method"),
-            Parameter => write!(f, "parameter"),
-            ServiceDecl => write!(f, "service declaration"),
-            ServiceMember => write!(f, "service member"),
-            StructDecl => write!(f, "struct declaration"),
-            StructMember => write!(f, "struct field"),
-            TableDecl => write!(f, "table declaration"),
-            TableMember => write!(f, "table member"),
-            TypeAliasDecl => write!(f, "type alias"),
-            UnionDecl => write!(f, "union declaration"),
-            UnionMember => write!(f, "union field"),
-        }
-    }
+#[derive(Debug, Copy, Clone)]
+pub enum PrimitiveSubtype {
+    Bool,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    Float32,
+    Float64,
 }
 
 impl Decl {

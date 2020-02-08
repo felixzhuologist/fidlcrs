@@ -9,8 +9,8 @@ extern crate lalrpop_util;
 #[macro_use]
 extern crate lazy_static;
 
-pub mod ast;
 pub mod errors;
+pub mod flat;
 lalrpop_mod!(pub grammar);
 pub mod lexer;
 pub mod parser;
@@ -44,7 +44,11 @@ fn main() {
                 for error in raw::validate::validate_file(&file) {
                     error_cx.add_error(error.into_snippet(&src_file));
                 }
+                // TODO: do validation on "aggregate" things: library attributes
+                // and library name. this needs to be done in validation since
+                // it owns the errors.
                 for decl in &file.decls {
+                    // TODO: error on duplicates
                     lib_names.insert(decl.value.name(), decl.span);
                 }
                 files.push(file);
