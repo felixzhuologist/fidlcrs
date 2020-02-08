@@ -5,6 +5,7 @@ use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, Sou
 use std::cmp;
 
 pub enum Error {
+    // TODO: the span may be invalid for "Doc" attribute keys.
     DuplicateDefinition {
         original: Span,
         duplicate: Span,

@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+// use std::cmp::Ordering;
 use std::fmt;
 
 // TODO: make Line, Col, ByteOffset types?
@@ -22,9 +22,13 @@ impl Location {
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+pub struct FileId(pub usize);
+
 // template on Pos type?
-#[derive(Copy, Clone, Default, Eq, Debug)]
+#[derive(Copy, Clone, Eq, Debug)]
 pub struct Span<Pos> {
+    pub file: FileId,
     pub start: Pos,
     pub end: Pos,
 }
@@ -34,38 +38,45 @@ where
     Pos: PartialEq,
 {
     fn eq(&self, other: &Span<Pos>) -> bool {
-        self.start == other.start && self.end == other.end
+        self.start == other.start && self.end == other.end && self.file == other.file
     }
 }
 
-impl<Pos> PartialOrd for Span<Pos>
-where
-    Pos: PartialOrd,
-{
-    fn partial_cmp(&self, other: &Span<Pos>) -> Option<Ordering> {
-        self.start.partial_cmp(&other.start).and_then(|ord| {
-            if ord == Ordering::Equal {
-                self.end.partial_cmp(&self.end)
-            } else {
-                Some(ord)
-            }
-        })
-    }
-}
+// TODO: can we remove this?
+// impl<Pos> PartialOrd for Span<Pos>
+// where
+//     Pos: PartialOrd,
+// {
+//     fn partial_cmp(&self, other: &Span<Pos>) -> Option<Ordering> {
+//         self.file.partial_cmp(&other.file).and_then(|ord| {
+//             if ord == Ordering::Equal {
+//                 self.start.partial_cmp(&other.start).and_then(|ord| {
+//                     if ord == Ordering::Equal {
+//                         self.end.partial_cmp(&self.end)
+//                     } else {
+//                         Some(ord)
+//                     }
+//                 })
+//             } else {
+//                 Some(ord)
+//             }
+//         })
+//     }
+// }
 
-impl<Pos> Ord for Span<Pos>
-where
-    Pos: Ord,
-{
-    fn cmp(&self, other: &Span<Pos>) -> Ordering {
-        let ord = self.start.cmp(&other.start);
-        if ord == Ordering::Equal {
-            self.end.cmp(&self.end)
-        } else {
-            ord
-        }
-    }
-}
+// impl<Pos> Ord for Span<Pos>
+// where
+//     Pos: Ord,
+// {
+//     fn cmp(&self, other: &Span<Pos>) -> Ordering {
+//         let ord = self.start.cmp(&other.start);
+//         if ord == Ordering::Equal {
+//             self.end.cmp(&self.end)
+//         } else {
+//             ord
+//         }
+//     }
+// }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Spanned<T, Pos> {
@@ -102,9 +113,9 @@ impl fmt::Display for Location {
     }
 }
 
-pub fn spanned<T, Pos>(start: Pos, end: Pos, value: T) -> Spanned<T, Pos> {
+pub fn spanned<T, Pos>(file: FileId, start: Pos, end: Pos, value: T) -> Spanned<T, Pos> {
     Spanned {
-        span: Span { start, end },
+        span: Span { file, start, end },
         value: value,
     }
 }

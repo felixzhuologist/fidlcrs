@@ -3,7 +3,7 @@ use std::str::Chars;
 
 use self::Error::*;
 use crate::span;
-use crate::span::{spanned, Location, Spanned};
+use crate::span::{spanned, FileId, Location, Spanned};
 use crate::token::Token;
 
 pub type Span = span::Span<usize>;
@@ -73,8 +73,8 @@ impl fmt::Display for Error {
     }
 }
 
-fn error<T>(location: Location, code: Error) -> Result<T, SpannedError> {
-    Err(spanned(location, location, code))
+fn error<T>(file: FileId, location: Location, code: Error) -> Result<T, SpannedError> {
+    Err(spanned(file, location, location, code))
 }
 
 fn is_ident_start(ch: char) -> bool {
@@ -108,6 +108,7 @@ pub type SpannedToken<'input> = Spanned<Token<'input>, Location>;
 pub type SpannedError = Spanned<Error, Location>;
 
 pub struct Tokenizer<'input> {
+    file: FileId,
     input: &'input str,
     chars: CharLocations<'input>,
     // keeps track of the latest position, which will be the eof_location at
@@ -117,12 +118,13 @@ pub struct Tokenizer<'input> {
 }
 
 impl<'input> Tokenizer<'input> {
-    pub fn new(input: &'input str) -> Tokenizer<'input> {
+    pub fn new(file: FileId, input: &'input str) -> Tokenizer<'input> {
         let mut chars = CharLocations::new(input);
         let eof_location = chars.location;
 
         Tokenizer {
-            input: input,
+            file,
+            input,
             eof_location: eof_location,
             lookahead: chars.next(),
             chars: chars,
@@ -146,7 +148,7 @@ impl<'input> Tokenizer<'input> {
 
     fn error<T>(&mut self, location: Location, code: Error) -> Result<T, SpannedError> {
         self.skip_to_end();
-        error(location, code)
+        error(self.file, location, code)
     }
 
     fn test_lookahead<F>(&self, mut test: F) -> bool
@@ -165,7 +167,7 @@ impl<'input> Tokenizer<'input> {
                 '"' => {
                     let end = next.shift(ch);
                     let token = Token::StringLiteral(string);
-                    return Ok(spanned(start, end, token));
+                    return Ok(spanned(self.file, start, end, token));
                 }
                 ch => string.push(ch),
             }
@@ -255,7 +257,7 @@ impl<'input> Tokenizer<'input> {
             }
         };
 
-        Ok(spanned(start, end, token))
+        Ok(spanned(self.file, start, end, token))
     }
 
     fn comment_or_doc_comment(&mut self, start: Location) -> Option<SpannedToken<'input>> {
@@ -266,6 +268,7 @@ impl<'input> Tokenizer<'input> {
             None
         } else if comment.starts_with("///") {
             Some(spanned(
+                self.file,
                 start,
                 end,
                 Token::DocComment(comment[3..].trim().to_string()),
@@ -298,7 +301,7 @@ impl<'input> Tokenizer<'input> {
             "compose" => Token::Compose,
             _ => Token::Identifier(&ident),
         };
-        return spanned(start, end, token);
+        return spanned(self.file, start, end, token);
     }
 
     /// Consumes characters while F returns true, then returns the str from the
@@ -348,7 +351,12 @@ impl<'input> Iterator for Tokenizer<'input> {
 
                 ch if ch == '-' && self.test_lookahead(|ch| ch == '>') => {
                     self.bump();
-                    Some(Ok(spanned(start, start.shift(ch).shift('>'), Token::Arrow)))
+                    Some(Ok(spanned(
+                        self.file,
+                        start,
+                        start.shift(ch).shift('>'),
+                        Token::Arrow,
+                    )))
                 }
                 ch if is_digit(ch) => Some(self.numeric_literal(start, false)),
                 ch if (ch == '-' && self.test_lookahead(is_digit)) => {
@@ -365,23 +373,73 @@ impl<'input> Iterator for Tokenizer<'input> {
                     }
                 }
 
-                '(' => Some(Ok(spanned(start, start.shift(ch), Token::LParen))),
-                ')' => Some(Ok(spanned(start, start.shift(ch), Token::RParen))),
-                '[' => Some(Ok(spanned(start, start.shift(ch), Token::LSquare))),
-                ']' => Some(Ok(spanned(start, start.shift(ch), Token::RSquare))),
-                '{' => Some(Ok(spanned(start, start.shift(ch), Token::LCurly))),
-                '}' => Some(Ok(spanned(start, start.shift(ch), Token::RCurly))),
-                '<' => Some(Ok(spanned(start, start.shift(ch), Token::LAngle))),
-                '>' => Some(Ok(spanned(start, start.shift(ch), Token::RAngle))),
+                '(' => Some(Ok(spanned(
+                    self.file,
+                    start,
+                    start.shift(ch),
+                    Token::LParen,
+                ))),
+                ')' => Some(Ok(spanned(
+                    self.file,
+                    start,
+                    start.shift(ch),
+                    Token::RParen,
+                ))),
+                '[' => Some(Ok(spanned(
+                    self.file,
+                    start,
+                    start.shift(ch),
+                    Token::LSquare,
+                ))),
+                ']' => Some(Ok(spanned(
+                    self.file,
+                    start,
+                    start.shift(ch),
+                    Token::RSquare,
+                ))),
+                '{' => Some(Ok(spanned(
+                    self.file,
+                    start,
+                    start.shift(ch),
+                    Token::LCurly,
+                ))),
+                '}' => Some(Ok(spanned(
+                    self.file,
+                    start,
+                    start.shift(ch),
+                    Token::RCurly,
+                ))),
+                '<' => Some(Ok(spanned(
+                    self.file,
+                    start,
+                    start.shift(ch),
+                    Token::LAngle,
+                ))),
+                '>' => Some(Ok(spanned(
+                    self.file,
+                    start,
+                    start.shift(ch),
+                    Token::RAngle,
+                ))),
 
-                '.' => Some(Ok(spanned(start, start.shift(ch), Token::Dot))),
-                ',' => Some(Ok(spanned(start, start.shift(ch), Token::Comma))),
-                ';' => Some(Ok(spanned(start, start.shift(ch), Token::Semi))),
-                ':' => Some(Ok(spanned(start, start.shift(ch), Token::Colon))),
-                '?' => Some(Ok(spanned(start, start.shift(ch), Token::Question))),
-                '=' => Some(Ok(spanned(start, start.shift(ch), Token::Equal))),
-                '&' => Some(Ok(spanned(start, start.shift(ch), Token::Ampersand))),
-                '|' => Some(Ok(spanned(start, start.shift(ch), Token::Pipe))),
+                '.' => Some(Ok(spanned(self.file, start, start.shift(ch), Token::Dot))),
+                ',' => Some(Ok(spanned(self.file, start, start.shift(ch), Token::Comma))),
+                ';' => Some(Ok(spanned(self.file, start, start.shift(ch), Token::Semi))),
+                ':' => Some(Ok(spanned(self.file, start, start.shift(ch), Token::Colon))),
+                '?' => Some(Ok(spanned(
+                    self.file,
+                    start,
+                    start.shift(ch),
+                    Token::Question,
+                ))),
+                '=' => Some(Ok(spanned(self.file, start, start.shift(ch), Token::Equal))),
+                '&' => Some(Ok(spanned(
+                    self.file,
+                    start,
+                    start.shift(ch),
+                    Token::Ampersand,
+                ))),
+                '|' => Some(Ok(spanned(self.file, start, start.shift(ch), Token::Pipe))),
 
                 ch if is_ident_start(ch) => Some(Ok(self.identifier(start))),
 
@@ -389,6 +447,7 @@ impl<'input> Iterator for Tokenizer<'input> {
             };
         }
         Some(Ok(spanned(
+            self.file,
             self.eof_location,
             self.eof_location,
             Token::EOF,
@@ -406,9 +465,9 @@ pub struct Lexer<'input> {
 }
 
 impl<'input> Lexer<'input> {
-    pub fn new(input: &'input str) -> Lexer<'input> {
+    pub fn new(file: FileId, input: &'input str) -> Lexer<'input> {
         Lexer {
-            tokenizer: Tokenizer::new(input),
+            tokenizer: Tokenizer::new(file, input),
         }
     }
 }
@@ -442,12 +501,14 @@ mod test {
     fn tokenizer<'input>(
         input: &'input str,
     ) -> Box<dyn Iterator<Item = Result<SpannedToken<'input>, SpannedError>> + 'input> where {
-        Box::new(Tokenizer::new(input).take_while(|token| match *token {
-            Ok(Spanned {
-                value: Token::EOF, ..
-            }) => false,
-            _ => true,
-        }))
+        Box::new(
+            Tokenizer::new(FileId(0), input).take_while(|token| match *token {
+                Ok(Spanned {
+                    value: Token::EOF, ..
+                }) => false,
+                _ => true,
+            }),
+        )
     }
 
     fn test(input: &str, expected: Vec<(&str, Token)>) {
@@ -464,7 +525,7 @@ mod test {
             let end_byte = expected_span.rfind("@").unwrap() + 1;
             let end = lines.location(end_byte.into()).unwrap();
 
-            assert_eq!(Ok(spanned(start, end, expected_tok)), token);
+            assert_eq!(Ok(spanned(FileId(0), start, end, expected_tok)), token);
         }
 
         assert_eq!(count, length);

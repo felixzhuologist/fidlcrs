@@ -4,7 +4,7 @@ use crate::flatten::ResolverContext;
 use crate::lexer::Span;
 use crate::raw;
 use crate::raw::Spanned;
-use crate::source_file::FileId;
+use crate::span::FileId;
 use std::collections::HashMap;
 
 impl Library {

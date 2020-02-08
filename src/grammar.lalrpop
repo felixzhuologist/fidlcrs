@@ -35,7 +35,7 @@ use crate::token::Token;
 use crate::lexer::SpannedError;
 use crate::span;
 
-grammar<'input>;
+grammar<'input>(file_id: span::FileId);
 
 pub File: File = {
     <attributes:AttributeBlock>
@@ -182,11 +182,11 @@ MaybeDefault: Option<Spanned<ConstVal>> = {
 Strictness: Option<Spanned<Strictness>> = {
     Spanned<"strict"> => {
         let span = <>.span;
-        Some(span::spanned(span.start, span.end, Strictness::Strict))
+        Some(span::spanned(span.file, span.start, span.end, Strictness::Strict))
     },
     Spanned<"flexible"> => {
         let span = <>.span;
-        Some(span::spanned(span.start, span.end, Strictness::Flexible))
+        Some(span::spanned(span.file, span.start, span.end, Strictness::Flexible))
     },
     => None,
 };
@@ -233,9 +233,10 @@ AttributeBlock: Vec<Spanned<Attribute>> = {
 
             let start = lines.first().unwrap().span.start;
             let end = lines.last().unwrap().span.end;
-            attrs.push(span::spanned(start, end, Attribute {
-                name: span::spanned(0, 0, "Doc".to_string()),
-                value: Some(span::spanned(start, end, comment))
+            let file = lines.first().unwrap().span.file;
+            attrs.push(span::spanned(file, start, end, Attribute {
+                name: span::spanned(file, 0, 0, "Doc".to_string()),
+                value: Some(span::spanned(file, start, end, comment))
             }));
         }
         attrs
@@ -261,7 +262,7 @@ CompoundIdentifier: CompoundIdentifier = {
         let start = components.first().unwrap().span.start;
         let end = components.last().unwrap().span.end;
         let value: Vec<_> = components.into_iter().map(|spanned| spanned.value).collect();
-        span::Spanned { span: span::Span { start, end }, value }
+        span::Spanned { span: span::Span { file: file_id, start, end }, value }
     }
 };
 
@@ -318,7 +319,7 @@ IntLiteral: IntLiteral = {
 };
 
 Spanned<T>: Spanned<T> = {
-    <l: @L> <v: T> <r: @R> => span::spanned(l, r, v)
+    <l: @L> <v: T> <r: @R> => span::spanned(file_id, l, r, v)
 };
 
 extern {

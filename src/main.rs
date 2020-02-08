@@ -30,7 +30,7 @@ struct Args {
 fn main() {
     let args: Args = argh::from_env();
 
-    let mut dependencies = flat::resolve::Dependencies::default();
+    let mut _dependencies = flat::resolve::Dependencies::default();
     let mut error_cx = errors::ErrorCx::default();
     // TODO: this will be per library
     {
@@ -49,18 +49,20 @@ fn main() {
                     flattener.add_file(file, src_file.id);
                 }
                 Err(err) => {
-                    error_cx.add_error(err.into_snippet(&src_file));
+                    error_cx.add_error(err.into_snippet(&lib_cx));
                     println!("Parsing failed");
                 }
             };
         }
-        let (files, errors) = flattener.finish();
-        for error in errors {
-            error_cx.add_error(error.into_snippet(&lib_cx));
+        if !flattener.files.is_empty() {
+            let (_files, errors) = flattener.finish();
+            for error in errors {
+                error_cx.add_error(error.into_snippet(&lib_cx));
+            }
+            // let lib = flat::Library::from_files(files, &dependencies);
+            // TODO: accumulate errors here
+            // dependencies.add_library(lib);
         }
-        let lib = flat::Library::from_files(files, &dependencies);
-        // TODO: accumulate errors here
-        dependencies.add_library(lib);
     }
     error_cx.print_errors();
 }

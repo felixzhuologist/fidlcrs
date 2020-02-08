@@ -1,8 +1,8 @@
 use crate::grammar;
 use crate::lexer;
 use crate::raw;
-use crate::source_file::SourceFile;
-use crate::span::Span;
+use crate::source_file::{FileMap, SourceFile};
+use crate::span::{FileId, Span};
 use crate::token::Token;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 use lalrpop_util;
@@ -10,8 +10,8 @@ use std::fmt;
 
 pub fn parse(src: &SourceFile) -> Result<raw::File, Error> {
     grammar::FileParser::new()
-        .parse(lexer::Lexer::new(src.contents()))
-        .map_err(|err| err.into())
+        .parse(src.id, lexer::Lexer::new(src.id, src.contents()))
+        .map_err(|err| Error::new(src.id, err))
 }
 
 // TOD: separate out all the erorr code
@@ -33,11 +33,17 @@ pub fn parse(src: &SourceFile) -> Result<raw::File, Error> {
 // this needs to be kept in sync with the grammar and lexer
 type ParseError<'input> = lalrpop_util::ParseError<usize, Token<'input>, lexer::SpannedError>;
 
+#[derive(Debug)]
+pub struct Error {
+    file: FileId,
+    error: ErrorType,
+}
+
 /// This is a wrapper around our instance of lalrpop_util::ParseError that removes
 /// all of the instances of Tokens. This avoids having to pipe through the
 /// Token lifetimes since they are not necessary for creating error messages.
 #[derive(Debug)]
-pub enum Error {
+pub enum ErrorType {
     InvalidToken(usize),
     UnrecognizedEOF {
         location: usize,
@@ -55,10 +61,34 @@ pub enum Error {
     LexError(lexer::SpannedError),
 }
 
+impl Error {
+    pub fn new(file: FileId, err: ParseError) -> Self {
+        let error = match err {
+            ParseError::InvalidToken { location } => ErrorType::InvalidToken(location),
+            ParseError::UnrecognizedEOF { location, expected } => {
+                ErrorType::UnrecognizedEOF { location, expected }
+            }
+            ParseError::UnrecognizedToken {
+                token: (start, _, end),
+                expected,
+            } => ErrorType::UnrecognizedToken {
+                start,
+                end,
+                expected,
+            },
+            ParseError::ExtraToken {
+                token: (start, _, end),
+            } => ErrorType::ExtraToken { start, end },
+            ParseError::User { error } => ErrorType::LexError(error),
+        };
+        Error { file, error }
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use Error::*;
-        match self {
+        use ErrorType::*;
+        match &self.error {
             InvalidToken(_) => write!(f, "invalid token"),
             UnrecognizedEOF {
                 location: _,
@@ -83,45 +113,28 @@ impl fmt::Display for Error {
     }
 }
 
-impl From<ParseError<'_>> for Error {
-    fn from(err: ParseError) -> Self {
-        match err {
-            ParseError::InvalidToken { location } => Error::InvalidToken(location),
-            ParseError::UnrecognizedEOF { location, expected } => {
-                Error::UnrecognizedEOF { location, expected }
-            }
-            ParseError::UnrecognizedToken {
-                token: (start, _, end),
-                expected,
-            } => Error::UnrecognizedToken {
-                start,
-                end,
-                expected,
-            },
-            ParseError::ExtraToken {
-                token: (start, _, end),
-            } => Error::ExtraToken { start, end },
-            ParseError::User { error } => Error::LexError(error),
-        }
-    }
-}
-
 impl Error {
     pub fn get_span(&self) -> Span<usize> {
-        use Error::*;
+        let file = self.file;
+        use ErrorType::*;
         // TODO: there's probably a way to avoid the explicit dereferencing
-        match self {
+        match &self.error {
             InvalidToken(l)
             | UnrecognizedEOF {
                 location: l,
                 expected: _,
-            } => Span { start: *l, end: *l },
+            } => Span {
+                file,
+                start: *l,
+                end: *l,
+            },
             UnrecognizedToken {
                 start,
                 end,
                 expected: _,
             }
             | ExtraToken { start, end } => Span {
+                file,
                 start: *start,
                 end: *end,
             },
@@ -129,6 +142,7 @@ impl Error {
             // TODO: is it really useful to have Location during lexing?
             {
                 Span {
+                    file,
                     start: err.span.start.absolute,
                     end: err.span.end.absolute,
                 }
@@ -136,7 +150,8 @@ impl Error {
         }
     }
 
-    pub fn into_snippet(self, src: &SourceFile) -> Snippet {
+    pub fn into_snippet(self, files: &FileMap) -> Snippet {
+        let src = files.get_file(self.file);
         let span = self.get_span();
         let error_msg = format!("{}", self);
         let (line_start, source) = src.surrounding_lines(span.start, span.end);

@@ -1,9 +1,7 @@
 use std::cmp;
 use std::iter;
 
-use crate::span::Location;
-
-pub type FileId = usize;
+use crate::span::{FileId, Location};
 
 pub struct FileMap(pub Vec<SourceFile>);
 
@@ -13,13 +11,13 @@ impl FileMap {
     }
 
     pub fn add_file(&mut self, path: String, contents: String) -> &SourceFile {
-        let id = self.0.len();
+        let id = FileId(self.0.len());
         self.0.push(SourceFile::new(id, path, contents));
         self.get_file(id)
     }
 
     pub fn get_file(&self, id: FileId) -> &SourceFile {
-        &self.0[id]
+        &self.0[id.0]
     }
 }
 

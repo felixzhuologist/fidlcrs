@@ -6,7 +6,8 @@
 use crate::lexer::Span;
 use crate::raw;
 use crate::raw::{Attribute, FidlType, File, LibraryName, Spanned};
-use crate::source_file::{FileId, FileMap};
+use crate::source_file::FileMap;
+use crate::span::FileId;
 use annotate_snippets::snippet::Snippet;
 use std::collections::HashMap;
 
@@ -102,7 +103,8 @@ fn library_name_as_string(name: &LibraryName) -> String {
 fn get_library_name_span(name: &LibraryName) -> Span {
     let start = name.first().unwrap().span.start;
     let end = name.last().unwrap().span.start;
-    Span { start, end }
+    let file = name.first().unwrap().span.file;
+    Span { file, start, end }
 }
 
 pub enum Error {
