@@ -1,6 +1,6 @@
 use crate::lexer::Span;
 use crate::raw::{FidlType, Spanned};
-use crate::source_file::SourceFile;
+use crate::source_file::FileMap;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 use std::cmp;
 
@@ -34,7 +34,7 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn into_snippet(self, src: &SourceFile) -> Snippet {
+    pub fn into_snippet(self, srcs: &FileMap) -> Snippet {
         use Error::*;
         match self {
             DuplicateDefinition {
@@ -43,6 +43,7 @@ impl Error {
                 decl_type,
                 decl_name,
             } => {
+                let src = srcs.get_file(original.file);
                 let orig_span = original;
                 let dupe_span = duplicate;
                 let src_start = cmp::min(orig_span.start, dupe_span.start);
@@ -100,6 +101,7 @@ impl Error {
             }
             InvalidAttributePlacement { name, placement } => {
                 let span = name.span;
+                let src = srcs.get_file(span.file);
                 let (line_start, source) = src.surrounding_lines(span.start, span.end);
                 let source_start = src.lines.offset_at_line_number(line_start);
 
@@ -128,6 +130,7 @@ impl Error {
             }
             InvalidAttributeValue { name, value } => {
                 let span = value.span;
+                let src = srcs.get_file(span.file);
                 let (line_start, source) = src.surrounding_lines(span.start, span.end);
                 let source_start = src.lines.offset_at_line_number(line_start);
 
@@ -155,6 +158,7 @@ impl Error {
                 }
             }
             InvalidLibraryName(span) => {
+                let src = srcs.get_file(span.file);
                 let (line_start, source) = src.surrounding_lines(span.start, span.end);
                 let source_start = src.lines.offset_at_line_number(line_start);
 
@@ -180,6 +184,7 @@ impl Error {
                 }
             }
             EmptyTableOrUnion(span) => {
+                let src = srcs.get_file(span.file);
                 let (line_start, source) = src.surrounding_lines(span.start, span.end);
                 let source_start = src.lines.offset_at_line_number(line_start);
 
@@ -214,6 +219,7 @@ impl Error {
                 decl_span,
                 ordinal_spans,
             } => {
+                let src = srcs.get_file(decl_span.file);
                 let (line_start, source) = src.surrounding_lines(decl_span.start, decl_span.end);
                 let source_start = src.lines.offset_at_line_number(line_start);
 
@@ -251,6 +257,7 @@ impl Error {
                 name_span,
                 missing_ranges,
             } => {
+                let src = srcs.get_file(decl_span.file);
                 let (line_start, source) = src.surrounding_lines(decl_span.start, decl_span.end);
                 let source_start = src.lines.offset_at_line_number(line_start);
 

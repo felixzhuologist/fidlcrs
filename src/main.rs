@@ -44,7 +44,7 @@ fn main() {
             match parser::parse(src_file) {
                 Ok(file) => {
                     for error in raw::validate::validate_file(&file) {
-                        error_cx.add_error(error.into_snippet(&src_file));
+                        error_cx.add_error(error.into_snippet(&srcs));
                     }
                     flattener.add_file(file);
                 }
