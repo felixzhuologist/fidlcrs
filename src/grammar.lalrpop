@@ -42,62 +42,11 @@ pub File: File = {
     <name:FileHeader>
     <imports:Spanned<Import>*>
     <decls:SemicolonSeparated<Decl>> => {
-        let mut structs = Vec::new();
-        let mut consts = Vec::new();
-        let mut bits = Vec::new();
-        let mut enums = Vec::new();
-        let mut tables = Vec::new();
-        let mut unions = Vec::new();
-        let mut aliases = Vec::new();
-        let mut protocols = Vec::new();
-        let mut services = Vec::new();
-        decls.into_iter().for_each(|decl| {
-            let l = decl.span.start;
-            let r = decl.span.end;
-            match decl.value {
-                Decl::Alias(v) => {
-                    aliases.push(span::spanned(l, r, v));
-                }
-                Decl::Struct(v) => {
-                    structs.push(span::spanned(l, r, v));
-                },
-                Decl::Const(v) => {
-                    consts.push(span::spanned(l, r, v));
-                },
-                Decl::Bits(v) => {
-                    bits.push(span::spanned(l, r, v));
-                },
-                Decl::Enum(v) => {
-                    enums.push(span::spanned(l, r, v));
-                },
-                Decl::Table(v) => {
-                    tables.push(span::spanned(l, r, v));
-                },
-                Decl::Union(v) => {
-                    unions.push(span::spanned(l, r, v));
-                },
-                Decl::Protocol(v) => {
-                    protocols.push(span::spanned(l, r, v));
-                },
-                Decl::Service(v) => {
-                    services.push(span::spanned(l, r, v));
-                }
-            }
-        });
         File {
             attributes,
             name,
             imports,
-
-            aliases,
-            structs,
-            consts,
-            bits,
-            enums,
-            tables,
-            unions,
-            protocols,
-            services
+            decls,
         }
     }
 };

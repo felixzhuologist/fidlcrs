@@ -34,19 +34,22 @@ impl Validator {
     pub fn validate(&mut self, file: &File) {
         self.validate_attributes(&file.attributes, FidlType::Library);
         self.validate_library_name(&file.name);
-
         // self.validate_imports(&file.imports);
-        // self.validate_aliases(&file.aliases);
 
-        self.validate_consts(&file.consts);
-        self.validate_bits(&file.bits);
-        self.validate_enums(&file.enums);
-        self.validate_structs(&file.structs);
-        self.validate_tables(&file.tables);
-        self.validate_unions(&file.unions);
-
-        self.validate_protocols(&file.protocols);
-        self.validate_services(&file.services);
+        for decl in file.decls.iter() {
+            let span = decl.span;
+            match &decl.value {
+                Decl::Alias(decl) => self.validate_alias(decl),
+                Decl::Const(decl) => self.validate_const(&decl),
+                Decl::Bits(decl) => self.validate_bits(&decl),
+                Decl::Enum(decl) => self.validate_enum(&decl),
+                Decl::Struct(decl) => self.validate_struct(&decl),
+                Decl::Table(decl) => self.validate_table(&decl, span),
+                Decl::Union(decl) => self.validate_union(&decl, span),
+                Decl::Protocol(decl) => self.validate_protocol(&decl),
+                Decl::Service(decl) => self.validate_service(&decl),
+            }
+        }
     }
 
     fn validate_attributes(&mut self, attrs: &Vec<Spanned<Attribute>>, placement: FidlType) {
@@ -87,94 +90,81 @@ impl Validator {
         }
     }
 
-    fn validate_consts(&mut self, consts: &Vec<Spanned<ConstDecl>>) {
-        for decl in consts {
-            self.validate_attributes(&decl.value.attributes, FidlType::ConstDecl);
+    fn validate_alias(&mut self, decl: &Alias) {
+        self.validate_attributes(&decl.attributes, FidlType::Alias);
+    }
+    fn validate_const(&mut self, decl: &ConstDecl) {
+        self.validate_attributes(&decl.attributes, FidlType::ConstDecl);
+    }
+
+    fn validate_bits(&mut self, decl: &Bits) {
+        self.check_for_duplicates(&decl.members, FidlType::BitsMember);
+        self.validate_attributes(&decl.attributes, FidlType::BitsDecl);
+        for member in &decl.members {
+            self.validate_attributes(&member.value.attributes, FidlType::BitsMember);
         }
     }
 
-    fn validate_bits(&mut self, bits: &Vec<Spanned<Bits>>) {
-        for decl in bits {
-            self.check_for_duplicates(&decl.value.members, FidlType::BitsMember);
-            self.validate_attributes(&decl.value.attributes, FidlType::BitsDecl);
-            for member in &decl.value.members {
-                self.validate_attributes(&member.value.attributes, FidlType::BitsMember);
-            }
+    fn validate_enum(&mut self, decl: &Enum) {
+        self.check_for_duplicates(&decl.members, FidlType::EnumMember);
+        self.validate_attributes(&decl.attributes, FidlType::EnumDecl);
+        for member in &decl.members {
+            self.validate_attributes(&member.value.attributes, FidlType::EnumMember);
         }
     }
 
-    fn validate_enums(&mut self, enums: &Vec<Spanned<Enum>>) {
-        for decl in enums {
-            self.check_for_duplicates(&decl.value.members, FidlType::EnumMember);
-            self.validate_attributes(&decl.value.attributes, FidlType::EnumDecl);
-            for member in &decl.value.members {
-                self.validate_attributes(&member.value.attributes, FidlType::EnumMember);
-            }
+    fn validate_struct(&mut self, decl: &Struct) {
+        self.check_for_duplicates(&decl.members, FidlType::StructMember);
+        self.validate_attributes(&decl.attributes, FidlType::StructDecl);
+        for member in &decl.members {
+            self.validate_attributes(&member.value.attributes, FidlType::StructMember);
         }
     }
 
-    fn validate_structs(&mut self, structs: &Vec<Spanned<Struct>>) {
-        for decl in structs {
-            self.check_for_duplicates(&decl.value.members, FidlType::StructMember);
-            self.validate_attributes(&decl.value.attributes, FidlType::StructDecl);
-            for member in &decl.value.members {
-                self.validate_attributes(&member.value.attributes, FidlType::StructMember);
-            }
+    fn validate_table(&mut self, decl: &Table, span: Span) {
+        self.check_for_duplicates(&decl.members, FidlType::TableMember);
+        self.validate_attributes(&decl.attributes, FidlType::TableDecl);
+        for member in &decl.members {
+            self.validate_attributes(&member.value.attributes, FidlType::TableMember);
         }
+        self.check_ordinals(&decl.members, span, decl.name.span);
     }
 
-    fn validate_tables(&mut self, tables: &Vec<Spanned<Table>>) {
-        for decl in tables {
-            self.check_for_duplicates(&decl.value.members, FidlType::TableMember);
-            self.validate_attributes(&decl.value.attributes, FidlType::TableDecl);
-            for member in &decl.value.members {
-                self.validate_attributes(&member.value.attributes, FidlType::TableMember);
-            }
-            self.check_ordinals(&decl.value.members, decl.span, decl.value.name.span);
+    fn validate_union(&mut self, decl: &Union, span: Span) {
+        self.validate_attributes(&decl.attributes, FidlType::UnionDecl);
+        self.check_for_duplicates(&decl.members, FidlType::UnionMember);
+        for member in &decl.members {
+            self.validate_attributes(&member.value.attributes, FidlType::UnionMember);
         }
+        self.check_ordinals(&decl.members, span, decl.name.span);
     }
 
-    fn validate_unions(&mut self, unions: &Vec<Spanned<Union>>) {
-        for decl in unions {
-            self.validate_attributes(&decl.value.attributes, FidlType::UnionDecl);
-            self.check_for_duplicates(&decl.value.members, FidlType::UnionMember);
-            for member in &decl.value.members {
-                self.validate_attributes(&member.value.attributes, FidlType::UnionMember);
-            }
-            self.check_ordinals(&decl.value.members, decl.span, decl.value.name.span);
-        }
-    }
-
-    fn validate_protocols(&mut self, interfaces: &Vec<Spanned<Protocol>>) {
-        for iface in interfaces {
-            self.validate_attributes(&iface.value.attributes, FidlType::ProtocolDecl);
-            // Note: we check for duplicate compose statements after name resolution, once we
-            // know which protocols each name points to.
-            self.check_for_duplicates(&iface.value.methods, FidlType::ProtocolDecl);
-            for method in &iface.value.methods {
-                self.validate_attributes(&method.value.attributes, FidlType::Method);
-                if let Some(request) = &method.value.request {
-                    self.check_for_duplicates(request, FidlType::Parameter);
-                    for param in request {
-                        self.validate_attributes(&param.value.attributes, FidlType::Parameter);
-                    }
+    fn validate_protocol(&mut self, decl: &Protocol) {
+        self.validate_attributes(&decl.attributes, FidlType::ProtocolDecl);
+        // Note: we check for duplicate compose statements after name resolution, once we
+        // know which protocols each name points to.
+        self.check_for_duplicates(&decl.methods, FidlType::ProtocolDecl);
+        for method in &decl.methods {
+            self.validate_attributes(&method.value.attributes, FidlType::Method);
+            if let Some(request) = &method.value.request {
+                self.check_for_duplicates(request, FidlType::Parameter);
+                for param in request {
+                    self.validate_attributes(&param.value.attributes, FidlType::Parameter);
                 }
-                if let Some(response) = &method.value.response {
-                    self.check_for_duplicates(response, FidlType::Parameter);
-                    for param in response {
-                        self.validate_attributes(&param.value.attributes, FidlType::Parameter);
-                    }
+            }
+            if let Some(response) = &method.value.response {
+                self.check_for_duplicates(response, FidlType::Parameter);
+                for param in response {
+                    self.validate_attributes(&param.value.attributes, FidlType::Parameter);
                 }
             }
         }
     }
 
-    fn validate_services(&mut self, services: &Vec<Spanned<Service>>) {
-        for decl in services {
-            self.validate_attributes(&decl.value.attributes, FidlType::ServiceDecl);
-            for member in &decl.value.members {
-                self.validate_attributes(&member.value.attributes, FidlType::ServiceMember);
-            }
+    fn validate_service(&mut self, decl: &Service) {
+        self.validate_attributes(&decl.attributes, FidlType::ServiceDecl);
+        for member in &decl.members {
+            self.validate_attributes(&member.value.attributes, FidlType::ServiceMember);
         }
     }
 

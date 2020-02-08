@@ -13,43 +13,37 @@ pub type Spanned<T> = span::Spanned<T, usize>;
 pub type LibraryName = Vec<Spanned<String>>;
 pub type CompoundIdentifier = Spanned<Vec<String>>;
 
-// TODO: this is only used for parsing.
-pub enum Decl {
-    Struct(Struct),
-    Const(ConstDecl),
-    Bits(Bits),
-    Enum(Enum),
-    Table(Table),
-    Union(Union),
-    Alias(Alias),
-    Protocol(Protocol),
-    Service(Service),
-}
-
-// TODO: there's actually no reason to have this vec of decls structure that
-// fidlc uses. We should have a map of Name -> Decl instead.
-// TODO: these should actually be represented as followS:
-// have a Decls type that is parameterized by name, which contains all of the
-// decls (alaises, consts, struts, ....). then, a File would contain
-// a Decls<UnresolvedName> and a Library would contain a Decls<ResolvedName>
 #[derive(Debug)]
 pub struct File {
     pub attributes: Vec<Spanned<Attribute>>,
     pub name: LibraryName,
     pub imports: Vec<Spanned<Import>>,
+    pub decls: Vec<Spanned<Decl>>,
+}
 
-    pub aliases: Vec<Spanned<Alias>>,
+// TODO: compare this rep and the resolved version. they might be able to be
+// refactored into specializations of a common ast
 
-    pub consts: Vec<Spanned<ConstDecl>>,
+/// The possible toplevel things that can be declared in a FIDL file. They
+/// comprise of:
+///   - aliases, which store a name to another `Decl`
+///   - `const`s, which declare a value and have a type
+///   - types (structs, bits, enums, tables, and unions)
+///   - protocols (protocol, service)
+#[derive(Debug)]
+pub enum Decl {
+    Alias(Alias),
 
-    pub bits: Vec<Spanned<Bits>>,
-    pub enums: Vec<Spanned<Enum>>,
-    pub structs: Vec<Spanned<Struct>>,
-    pub tables: Vec<Spanned<Table>>,
-    pub unions: Vec<Spanned<Union>>,
+    Const(ConstDecl),
 
-    pub protocols: Vec<Spanned<Protocol>>,
-    pub services: Vec<Spanned<Service>>,
+    Struct(Struct),
+    Bits(Bits),
+    Enum(Enum),
+    Table(Table),
+    Union(Union),
+
+    Protocol(Protocol),
+    Service(Service),
 }
 
 #[derive(Debug, Clone)]
@@ -257,6 +251,7 @@ pub enum Strictness {
 // TODO: what's a good name for this? it's all "things" that can be specified in FIDL
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum FidlType {
+    Alias,
     Attribute,
     BitsDecl,
     BitsMember,
@@ -282,6 +277,7 @@ impl fmt::Display for FidlType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use FidlType::*;
         match self {
+            Alias => write!(f, "alias"),
             Attribute => write!(f, "attribute"),
             BitsDecl => write!(f, "bits declaration"),
             BitsMember => write!(f, "bits field"),
