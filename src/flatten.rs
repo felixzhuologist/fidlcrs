@@ -75,7 +75,7 @@ impl Flattener {
     }
 
     pub fn finish(self) -> (ResolverContext, Vec<Error>) {
-        let errors = raw::validate::validate_attributes(&self.attributes, FidlType::Library);
+        let _errors = raw::validate::validate_attributes(&self.attributes, FidlType::Library);
         // TODO: we need to refactor Span to know about file Ids before being able to reuse the
         // code from raw:: here.
 
@@ -124,7 +124,7 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn into_snippet(self, srcs: &FileMap) -> Snippet {
+    pub fn into_snippet(self, _srcs: &FileMap) -> Snippet {
         unimplemented!()
     }
 }

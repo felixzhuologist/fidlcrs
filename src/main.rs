@@ -1,5 +1,4 @@
 use argh::FromArgs;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 // use walkdir::WalkDir;
@@ -38,26 +37,16 @@ fn main() {
         let filenames: Vec<String> = args.files.split(',').map(str::to_string).collect();
 
         let mut lib_cx = source_file::FileMap::new();
-        let mut files: Vec<raw::File> = Vec::new();
         let mut flattener = flatten::Flattener::default();
         for path in filenames {
             let raw_contents = read_file(&path);
             let src_file = lib_cx.add_file(path, raw_contents);
             match parser::parse(src_file) {
                 Ok(file) => {
-                    // could just .extend(.map) if this were a vector
                     for error in raw::validate::validate_file(&file) {
                         error_cx.add_error(error.into_snippet(&src_file));
                     }
                     flattener.add_file(file, src_file.id);
-                    // TODO: do validation on "aggregate" things: library attributes
-                    // and library name. this needs to be done in validation since
-                    // it owns the errors.
-                    // for decl in &file.decls {
-                    // TODO: error on duplicates
-                    // lib_names.insert(decl.value.name(), decl.span);
-                    // }
-                    // files.push(file);
                 }
                 Err(err) => {
                     error_cx.add_error(err.into_snippet(&src_file));

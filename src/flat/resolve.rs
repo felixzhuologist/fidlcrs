@@ -3,7 +3,7 @@ use super::*;
 use crate::flatten::ResolverContext;
 use crate::lexer::Span;
 use crate::raw;
-use crate::raw::{File, LibraryName, Spanned};
+use crate::raw::Spanned;
 use crate::source_file::FileId;
 use std::collections::HashMap;
 
@@ -50,16 +50,16 @@ impl Library {
         }
     }
 
-    pub fn lookup(&self, var_name: String) -> Option<Spanned<Decl>> {
+    pub fn lookup(&self, _var_name: String) -> Option<Spanned<Decl>> {
         unimplemented!()
     }
 }
 
 pub fn resolve(
-    decl: raw::Decl,
-    ctx: &ImportContext,
-    local_names: &HashMap<String, (Span, FileId)>,
-    dep_names: &Dependencies,
+    _decl: raw::Decl,
+    _ctx: &ImportContext,
+    _local_names: &HashMap<String, (Span, FileId)>,
+    _dep_names: &Dependencies,
 ) -> Result<Decl, Error> {
     unimplemented!()
 }
@@ -71,7 +71,7 @@ pub struct Dependencies {
 }
 
 impl Dependencies {
-    pub fn add_library(&mut self, lib: Library) {
+    pub fn add_library(&mut self, _lib: Library) {
         unimplemented!()
     }
 
@@ -85,7 +85,7 @@ impl Dependencies {
 pub struct ImportContext {}
 
 impl ImportContext {
-    pub fn from_imports(imports: Vec<Spanned<raw::Import>>) -> Result<ImportContext, Vec<Error>> {
+    pub fn from_imports(_imports: Vec<Spanned<raw::Import>>) -> Result<ImportContext, Vec<Error>> {
         unimplemented!()
     }
 }

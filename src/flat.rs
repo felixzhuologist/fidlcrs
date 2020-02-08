@@ -1,4 +1,4 @@
-use crate::raw::{Attribute, IntLiteral, LibraryName, Literal, Spanned, Strictness};
+use crate::raw::{Attribute, IntLiteral, Literal, Spanned, Strictness};
 use std::collections::HashMap;
 
 pub mod errors;
@@ -215,7 +215,7 @@ pub enum Type {
     Primitive(PrimitiveSubtype),
     Identifier {
         name: Spanned<Name>,
-        Layout: Option<Spanned<Box<Type>>>,
+        layout: Option<Spanned<Box<Type>>>,
         constraint: Option<Spanned<ConstVal>>,
         nullable: bool,
     },
