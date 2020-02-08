@@ -7,7 +7,7 @@ pub mod resolve;
 #[derive(Debug)]
 pub struct Library {
     pub attributes: Vec<Spanned<Attribute>>,
-    pub name: LibraryName,
+    pub name: String,
     pub decls: HashMap<String, Spanned<Decl>>,
 }
 
