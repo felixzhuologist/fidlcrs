@@ -12,9 +12,12 @@ pub fn validate_file(file: &File) -> Vec<Error> {
     return validator.errors;
 }
 
+/// This struct exists mainly to keep track of some internal state (i.e. the
+/// list of errors) while doing validation on a File. See raw::errors for the
+/// things that are checked at this stage.
 pub struct Validator {
-    pub errors: Vec<Error>,
-    pub attribute_schemas: &'static HashMap<String, AttributeSchema>,
+    errors: Vec<Error>,
+    attribute_schemas: &'static HashMap<String, AttributeSchema>,
 }
 
 // TODO: shouldn't have to need to specify FidlTypes explicitly. They should be automatically

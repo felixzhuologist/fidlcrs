@@ -7,6 +7,11 @@ pub mod validate;
 
 pub type Spanned<T> = span::Spanned<T, usize>;
 
+// TODO: we don't actually need spans over the individual components of the
+// compound identifier except for library names (even then, we could always just
+// show an error over the entire name). so this should be a Spanned<Vec<String>>
+// instead. and optionally there can be a separate LibraryName type that has
+// individual components spanned.
 pub type CompoundIdentifier = Vec<Spanned<String>>;
 
 // TODO: this is only used for parsing.
@@ -22,6 +27,12 @@ pub enum Decl {
     Service(Service),
 }
 
+// TODO: there's actually no reason to have this vec of decls structure that
+// fidlc uses. We should have a map of Name -> Decl instead.
+// TODO: these should actually be represented as followS:
+// have a Decls type that is parameterized by name, which contains all of the
+// decls (alaises, consts, struts, ....). then, a File would contain
+// a Decls<UnresolvedName> and a Library would contain a Decls<ResolvedName>
 #[derive(Debug)]
 pub struct File {
     pub attributes: Vec<Spanned<Attribute>>,
@@ -231,14 +242,6 @@ pub struct Type {
     // of the previous element
     pub nullable: bool,
 }
-
-// TODO: post FTP-50/templated types, should just have a generic type struct
-// #[derive(Debug, Clone)]
-// pub struct Type {
-//     pub name: Spanned<CompoundIdentifier>,
-//     pub layout: Option<Box<Type>>,
-//     pub constraint: Option<Spanned<String>>,
-// }
 
 #[derive(Debug, Copy, Clone)]
 pub struct IntLiteral {
