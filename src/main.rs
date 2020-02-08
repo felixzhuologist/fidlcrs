@@ -36,11 +36,11 @@ fn main() {
     {
         let filenames: Vec<String> = args.files.split(',').map(str::to_string).collect();
 
-        let mut lib_cx = source_file::FileMap::new();
+        let mut srcs = source_file::FileMap::new();
         let mut flattener = flatten::Flattener::default();
         for path in filenames {
             let raw_contents = read_file(&path);
-            let src_file = lib_cx.add_file(path, raw_contents);
+            let src_file = srcs.add_file(path, raw_contents);
             match parser::parse(src_file) {
                 Ok(file) => {
                     for error in raw::validate::validate_file(&file) {
@@ -49,7 +49,7 @@ fn main() {
                     flattener.add_file(file, src_file.id);
                 }
                 Err(err) => {
-                    error_cx.add_error(err.into_snippet(&lib_cx));
+                    error_cx.add_error(err.into_snippet(&src_file));
                     println!("Parsing failed");
                 }
             };
@@ -57,7 +57,7 @@ fn main() {
         if !flattener.files.is_empty() {
             let (_files, errors) = flattener.finish();
             for error in errors {
-                error_cx.add_error(error.into_snippet(&lib_cx));
+                error_cx.add_error(error.into_snippet(&srcs));
             }
             // let lib = flat::Library::from_files(files, &dependencies);
             // TODO: accumulate errors here
