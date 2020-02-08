@@ -64,7 +64,7 @@ impl Error {
 
                 Snippet {
                     title: Some(Annotation {
-                        label: Some("duplicate attributes".to_string()),
+                        label: Some("duplicate definition".to_string()),
                         id: None,
                         annotation_type: AnnotationType::Error,
                     }),
