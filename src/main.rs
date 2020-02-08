@@ -1,4 +1,5 @@
 use argh::FromArgs;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 // use walkdir::WalkDir;
@@ -28,11 +29,13 @@ struct Args {
 
 fn main() {
     let args: Args = argh::from_env();
-    let files: Vec<String> = args.files.split(',').map(str::to_string).collect();
+    let filenames: Vec<String> = args.files.split(',').map(str::to_string).collect();
 
     let mut lib_cx = source_file::FileMap::new();
     let mut error_cx = errors::ErrorCx::default();
-    for path in files {
+    let mut files: Vec<raw::File> = Vec::new();
+    let mut lib_names: HashMap<String, lexer::Span> = HashMap::new();
+    for path in filenames {
         let raw_contents = read_file(&path);
         let src_file = lib_cx.add_file(path, raw_contents);
         match parser::parse(src_file) {
@@ -41,6 +44,10 @@ fn main() {
                 for error in raw::validate::validate_file(&file) {
                     error_cx.add_error(error.into_snippet(&src_file));
                 }
+                for decl in &file.decls {
+                    lib_names.insert(decl.value.name(), decl.span);
+                }
+                files.push(file);
             }
             Err(err) => {
                 error_cx.add_error(err.into_snippet(&src_file));
@@ -48,6 +55,7 @@ fn main() {
             }
         };
     }
+
     error_cx.print_errors();
 }
 

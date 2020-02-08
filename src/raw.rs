@@ -300,3 +300,21 @@ impl fmt::Display for FidlType {
         }
     }
 }
+
+impl Decl {
+    // this is used to populated the map of library names before doing
+    // resolution. TODO: should this implement Nameable instead?
+    pub fn name(&self) -> String {
+        match self {
+            Decl::Alias(decl) => decl.name.value.clone(),
+            Decl::Const(decl) => decl.name.value.clone(),
+            Decl::Struct(decl) => decl.name.value.clone(),
+            Decl::Bits(decl) => decl.name.value.clone(),
+            Decl::Enum(decl) => decl.name.value.clone(),
+            Decl::Table(decl) => decl.name.value.clone(),
+            Decl::Union(decl) => decl.name.value.clone(),
+            Decl::Protocol(decl) => decl.name.value.clone(),
+            Decl::Service(decl) => decl.name.value.clone(),
+        }
+    }
+}
