@@ -4,7 +4,6 @@ use crate::flatten::ResolverContext;
 use crate::lexer::Span;
 use crate::raw;
 use crate::raw::Spanned;
-use crate::span::FileId;
 use std::collections::HashMap;
 
 impl Library {
@@ -58,7 +57,7 @@ impl Library {
 pub fn resolve(
     _decl: raw::Decl,
     _ctx: &ImportContext,
-    _local_names: &HashMap<String, (Span, FileId)>,
+    _local_names: &HashMap<String, Span>,
     _dep_names: &Dependencies,
 ) -> Result<Decl, Error> {
     unimplemented!()

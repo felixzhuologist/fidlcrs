@@ -46,7 +46,7 @@ fn main() {
                     for error in raw::validate::validate_file(&file) {
                         error_cx.add_error(error.into_snippet(&src_file));
                     }
-                    flattener.add_file(file, src_file.id);
+                    flattener.add_file(file);
                 }
                 Err(err) => {
                     error_cx.add_error(err.into_snippet(&src_file));

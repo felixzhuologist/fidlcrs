@@ -7,7 +7,6 @@ use crate::lexer::Span;
 use crate::raw;
 use crate::raw::{Attribute, FidlType, File, LibraryName, Spanned};
 use crate::source_file::FileMap;
-use crate::span::FileId;
 use annotate_snippets::snippet::Snippet;
 use std::collections::HashMap;
 
@@ -15,10 +14,10 @@ use std::collections::HashMap;
 pub struct Flattener {
     // each file's attributes are moved out and accumulated here
     pub attributes: Vec<Spanned<Attribute>>,
-    pub name: Option<(String, Span, FileId)>,
+    pub name: Option<(String, Span)>,
     // TODO: create a type that wraps a (Span, FileId) pair. Or, maybe Span should
     // be refactored to contain a FileId.
-    pub defined_names: HashMap<String, (Span, FileId)>,
+    pub defined_names: HashMap<String, Span>,
     pub errors: Vec<Error>,
     pub files: Vec<File>,
 }
@@ -26,48 +25,40 @@ pub struct Flattener {
 pub struct ResolverContext {
     pub attributes: Vec<Spanned<Attribute>>,
     pub name: String,
-    pub defined_names: HashMap<String, (Span, FileId)>,
+    pub defined_names: HashMap<String, Span>,
     pub files: Vec<File>,
 }
 
 impl Flattener {
-    pub fn add_file(&mut self, mut file: File, id: FileId) {
+    pub fn add_file(&mut self, mut file: File) {
         self.attributes.extend(file.attributes);
         file.attributes = Vec::new();
 
         match &self.name {
-            Some((existing_name, span, existing_id)) => {
+            Some((existing_name, span)) => {
                 let name = library_name_as_string(&file.name);
                 if existing_name != &name {
                     self.errors.push(Error::LibraryNameInconsistent {
                         existing_name: existing_name.clone(),
                         existing_span: *span,
-                        existing_file: *existing_id,
                         conflicting_name: name,
                         conflicting_span: get_library_name_span(&file.name),
-                        conflicting_file: id,
                     });
                 }
             }
             None => {
                 let span = get_library_name_span(&file.name);
                 let name = library_name_as_string(&file.name);
-                self.name = Some((name, span, id))
+                self.name = Some((name, span))
             }
         };
 
         for decl in &file.decls {
-            if let Some(dupe) = self
-                .defined_names
-                .insert(decl.value.name(), (decl.span, id))
-            {
-                let (existing_span, existing_file) = dupe;
+            if let Some(dupe) = self.defined_names.insert(decl.value.name(), decl.span) {
                 self.errors.push(Error::DupeDecl {
                     name: decl.value.name(),
-                    existing_span,
-                    existing_file,
+                    existing_span: dupe,
                     conflicting_span: decl.span,
-                    conflicting_file: id,
                 })
             }
         }
@@ -111,17 +102,13 @@ pub enum Error {
     LibraryNameInconsistent {
         existing_name: String,
         existing_span: Span,
-        existing_file: FileId,
         conflicting_name: String,
         conflicting_span: Span,
-        conflicting_file: FileId,
     },
     DupeDecl {
         name: String,
         existing_span: Span,
-        existing_file: FileId,
         conflicting_span: Span,
-        conflicting_file: FileId,
     },
 }
 
