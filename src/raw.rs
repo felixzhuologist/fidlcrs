@@ -7,12 +7,11 @@ pub mod validate;
 
 pub type Spanned<T> = span::Spanned<T, usize>;
 
-// TODO: we don't actually need spans over the individual components of the
-// compound identifier except for library names (even then, we could always just
-// show an error over the entire name). so this should be a Spanned<Vec<String>>
-// instead. and optionally there can be a separate LibraryName type that has
-// individual components spanned.
-pub type CompoundIdentifier = Vec<Spanned<String>>;
+// The natural thing that lalrpop wants to parse is a Vec<Spanned<String>>,
+// but for regular compound identifiers we discard the spans of individual
+// elements since they're not used.
+pub type LibraryName = Vec<Spanned<String>>;
+pub type CompoundIdentifier = Spanned<Vec<String>>;
 
 // TODO: this is only used for parsing.
 pub enum Decl {
@@ -36,7 +35,7 @@ pub enum Decl {
 #[derive(Debug)]
 pub struct File {
     pub attributes: Vec<Spanned<Attribute>>,
-    pub name: CompoundIdentifier,
+    pub name: LibraryName,
     pub imports: Vec<Spanned<Import>>,
 
     pub aliases: Vec<Spanned<Alias>>,

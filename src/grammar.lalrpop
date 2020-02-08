@@ -12,6 +12,7 @@ use crate::raw::{
     File,
     Import,
     IntLiteral,
+    LibraryName,
     Literal,
     Method,
     Parameter,
@@ -101,8 +102,8 @@ pub File: File = {
     }
 };
 
-FileHeader: CompoundIdentifier = {
-    "library" <CompoundIdentifier> ";"
+FileHeader: LibraryName = {
+    "library" <LibraryName> ";"
 };
 
 Import: Import = {
@@ -303,7 +304,17 @@ Attribute: Attribute = {
     <name:Spanned<Identifier>> <value:("=" <Spanned<string_literal>>)?> => Attribute { name, value },
 };
 
-CompoundIdentifier: CompoundIdentifier = DotSeparated<Identifier>;
+LibraryName: LibraryName = DotSeparated<Identifier>;
+
+CompoundIdentifier: CompoundIdentifier = {
+    LibraryName => {
+        let components = <>;
+        let start = components.first().unwrap().span.start;
+        let end = components.last().unwrap().span.end;
+        let value: Vec<_> = components.into_iter().map(|spanned| spanned.value).collect();
+        span::Spanned { span: span::Span { start, end }, value }
+    }
+};
 
 Identifier: String = {
     identifier => String::from(<>),

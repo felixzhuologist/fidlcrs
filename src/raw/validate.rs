@@ -76,7 +76,7 @@ impl Validator {
         }
     }
 
-    fn validate_library_name(&mut self, name: &CompoundIdentifier) {
+    fn validate_library_name(&mut self, name: &LibraryName) {
         let re = Regex::new(r"^[a-z][a-z0-9]*$").unwrap();
         for component in name.iter() {
             if !re.is_match(&component.value) {
