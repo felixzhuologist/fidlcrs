@@ -12,6 +12,12 @@ pub fn validate_file(file: &File) -> Vec<Error> {
     return validator.errors;
 }
 
+pub fn validate_attributes(attrs: &Vec<Spanned<Attribute>>, placement: FidlType) -> Vec<Error> {
+    let mut validator = Validator::new();
+    validator.validate_attributes(attrs, placement);
+    return validator.errors;
+}
+
 /// This struct exists mainly to keep track of some internal state (i.e. the
 /// list of errors) while doing validation on a File. See raw::errors for the
 /// things that are checked at this stage.
