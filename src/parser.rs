@@ -14,21 +14,7 @@ pub fn parse(src: &SourceFile) -> Result<raw::File, Error> {
         .map_err(|err| err.into())
 }
 
-// TOD: separate out all the erorr code
 // TODO: follow rustc's parse error format:
-// error: expected one of `::`, `;`, or `as`, found keyword `use`
-//  --> src/raw/attributes.rs:2:1
-//   |
-// 1 | use super::errors::Error
-//   |                         - expected one of `::`, `;`, or `as`
-// 2 | use crate::raw::Attribute;
-//   | ^^^ unexpected token
-
-// error: aborting due to previous error
-
-// error: could not compile `fidlc-rs`.
-
-// use crate::lexer::Token
 
 // this needs to be kept in sync with the grammar and lexer
 type ParseError<'input> = lalrpop_util::ParseError<usize, Token<'input>, lexer::SpannedError>;

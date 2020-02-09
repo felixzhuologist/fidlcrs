@@ -1,8 +1,8 @@
+use crate::errors::{span_to_snippet, two_spans_to_snippet, ErrText};
 use crate::lexer::Span;
 use crate::raw::{FidlType, Spanned};
 use crate::source_file::FileMap;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
-use std::cmp;
 
 pub enum Error {
     DuplicateDefinition {
@@ -36,230 +36,107 @@ impl Error {
     pub fn into_snippet(self, srcs: &FileMap) -> Snippet {
         use Error::*;
         match self {
+            // TODO: the span may be invalid for "Doc" attribute keys.
+
+            // TODO: provide help for duplicate attributes (in particular doc comments)
+            // if original.value.name.value == "Doc" || duplicate.value.name.value == "Doc" {
+            //     footer.push(Annotation {
+            //         label: Some(
+            //             "doc comments are added as attributes with a key of \"Doc\""
+            //                 .to_string(),
+            //         ),
+            //         id: None,
+            //         annotation_type: AnnotationType::Help,
+            //     });
+            // }
             DuplicateDefinition {
                 original,
                 duplicate,
                 decl_type,
                 decl_name,
-            } => {
-                // TODO: the span may be invalid for "Doc" attribute keys.
-
-                // TODO: provide help for duplicate attributes (in particular doc comments)
-                // if original.value.name.value == "Doc" || duplicate.value.name.value == "Doc" {
-                //     footer.push(Annotation {
-                //         label: Some(
-                //             "doc comments are added as attributes with a key of \"Doc\""
-                //                 .to_string(),
-                //         ),
-                //         id: None,
-                //         annotation_type: AnnotationType::Help,
-                //     });
-                // }
-
-                // If the two declarations are in the same file, we output a single slice
-                // of the file with two annotations. If they're in different files, we
-                // need to output to separate slices of the two different files each with
-                // an annotation. There should probably be a way to simplify this logic
-                let slices = if original.file == duplicate.file {
-                    let src = srcs.get_file(original.file);
-                    let src_start = cmp::min(original.start, duplicate.start);
-                    let src_end = cmp::min(original.end, duplicate.end);
-                    let (line_start, source) = src.surrounding_lines(src_start, src_end);
-                    let source_start = src.lines.offset_at_line_number(line_start);
-                    vec![Slice {
-                        source,
-                        line_start,
-                        origin: Some(src.path.clone()),
-                        fold: false,
-                        annotations: vec![
-                            SourceAnnotation {
-                                label: format!(
-                                    "{} {} originally defined here",
-                                    decl_type, decl_name
-                                ),
-                                annotation_type: AnnotationType::Info,
-                                range: (original.start - source_start, original.end - source_start),
-                            },
-                            SourceAnnotation {
-                                label: "duplicate definition".to_string(),
-                                annotation_type: AnnotationType::Error,
-                                range: (
-                                    duplicate.start - source_start,
-                                    duplicate.end - source_start,
-                                ),
-                            },
-                        ],
-                    }]
-                } else {
-                    let orig_slice = {
-                        let src = srcs.get_file(original.file);
-                        let (line_start, source) =
-                            src.surrounding_lines(original.start, original.end);
-                        let source_start = src.lines.offset_at_line_number(line_start);
-                        Slice {
-                            source,
-                            line_start,
-                            origin: Some(src.path.clone()),
-                            fold: false,
-                            annotations: vec![SourceAnnotation {
-                                label: format!(
-                                    "{} {} originally defined here",
-                                    decl_type, decl_name
-                                ),
-                                annotation_type: AnnotationType::Info,
-                                range: (original.start - source_start, original.end - source_start),
-                            }],
-                        }
-                    };
-                    let dupe_slice = {
-                        let src = srcs.get_file(duplicate.file);
-                        let (line_start, source) =
-                            src.surrounding_lines(duplicate.start, duplicate.end);
-                        let source_start = src.lines.offset_at_line_number(line_start);
-                        Slice {
-                            source,
-                            line_start,
-                            origin: Some(src.path.clone()),
-                            fold: false,
-                            annotations: vec![SourceAnnotation {
-                                label: "duplicate definition".to_string(),
-                                annotation_type: AnnotationType::Info,
-                                range: (
-                                    duplicate.start - source_start,
-                                    duplicate.end - source_start,
-                                ),
-                            }],
-                        }
-                    };
-                    vec![dupe_slice, orig_slice]
-                };
-
-                Snippet {
-                    title: Some(Annotation {
-                        label: Some("duplicate definition".to_string()),
-                        id: None,
-                        annotation_type: AnnotationType::Error,
-                    }),
-                    footer: vec![],
-                    slices,
-                }
-            }
-            InvalidAttributePlacement { name, placement } => {
-                let span = name.span;
-                let src = srcs.get_file(span.file);
-                let (line_start, source) = src.surrounding_lines(span.start, span.end);
-                let source_start = src.lines.offset_at_line_number(line_start);
-
-                Snippet {
-                    title: Some(Annotation {
-                        label: Some("attribute not allowed".to_string()),
-                        id: None,
-                        annotation_type: AnnotationType::Error,
-                    }),
-                    footer: vec![],
-                    slices: vec![Slice {
-                        source,
-                        line_start,
-                        origin: Some(src.path.clone()),
-                        fold: false,
-                        annotations: vec![SourceAnnotation {
-                            label: format!(
-                                "attribute {} cannot be placed on a {}",
-                                name.value, placement
-                            ),
-                            annotation_type: AnnotationType::Error,
-                            range: (span.start - source_start, span.end - source_start),
-                        }],
-                    }],
-                }
-            }
-            InvalidAttributeValue { name, value } => {
-                let span = value.span;
-                let src = srcs.get_file(span.file);
-                let (line_start, source) = src.surrounding_lines(span.start, span.end);
-                let source_start = src.lines.offset_at_line_number(line_start);
-
-                Snippet {
-                    title: Some(Annotation {
-                        label: Some("attribute value not allowed".to_string()),
-                        id: None,
-                        annotation_type: AnnotationType::Error,
-                    }),
-                    footer: vec![],
-                    slices: vec![Slice {
-                        source,
-                        line_start,
-                        origin: Some(src.path.clone()),
-                        fold: false,
-                        annotations: vec![SourceAnnotation {
-                            label: format!(
-                                "attribute {} cannot have value \"{}\"",
-                                name.value, value.value
-                            ),
-                            annotation_type: AnnotationType::Error,
-                            range: (span.start - source_start, span.end - source_start),
-                        }],
-                    }],
-                }
-            }
-            InvalidLibraryName(span) => {
-                let src = srcs.get_file(span.file);
-                let (line_start, source) = src.surrounding_lines(span.start, span.end);
-                let source_start = src.lines.offset_at_line_number(line_start);
-
-                Snippet {
-                    title: Some(Annotation {
-                        label: Some("invalid library name".to_string()),
-                        id: None,
-                        annotation_type: AnnotationType::Error,
-                    }),
-                    footer: vec![],
-                    slices: vec![Slice {
-                        source,
-                        line_start,
-                        origin: Some(src.path.clone()),
-                        fold: false,
-                        annotations: vec![SourceAnnotation {
-                            label: "library name components must match ^[a-z][a-z0-9]*$"
-                                .to_string(),
-                            annotation_type: AnnotationType::Error,
-                            range: (span.start - source_start, span.end - source_start),
-                        }],
-                    }],
-                }
-            }
-            EmptyTableOrUnion(span) => {
-                let src = srcs.get_file(span.file);
-                let (line_start, source) = src.surrounding_lines(span.start, span.end);
-                let source_start = src.lines.offset_at_line_number(line_start);
-
-                Snippet {
-                    title: Some(Annotation {
-                        label: Some("empty table or union".to_string()),
-                        id: None,
-                        annotation_type: AnnotationType::Error,
-                    }),
-                    footer: vec![Annotation {
-                        label: Some(
-                            "try using an empty struct to define a placeholder member".to_string(),
-                        ),
-                        id: None,
-                        annotation_type: AnnotationType::Help,
-                    }],
-                    slices: vec![Slice {
-                        source,
-                        line_start,
-                        origin: Some(src.path.clone()),
-                        fold: false,
-                        annotations: vec![SourceAnnotation {
-                            label: "tables and unions must have at least one non reserved member"
-                                .to_string(),
-                            annotation_type: AnnotationType::Error,
-                            range: (span.start - source_start, span.end - source_start),
-                        }],
-                    }],
-                }
-            }
+            } => two_spans_to_snippet(
+                duplicate,
+                original,
+                srcs,
+                ErrText {
+                    text: "duplicate definition".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "duplicate definition".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: format!("{} {} originally defined here", decl_type, decl_name),
+                    ty: AnnotationType::Info,
+                },
+                None,
+            ),
+            InvalidAttributePlacement { name, placement } => span_to_snippet(
+                name.span,
+                srcs,
+                ErrText {
+                    text: "attribute not allowed".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: format!(
+                        "attribute {} cannot be placed on a {}",
+                        name.value, placement
+                    ),
+                    ty: AnnotationType::Error,
+                },
+                None,
+            ),
+            InvalidAttributeValue { name, value } => span_to_snippet(
+                value.span,
+                srcs,
+                ErrText {
+                    text: "attribute value not allowed".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: format!(
+                        "attribute {} cannot have value \"{}\"",
+                        name.value, value.value
+                    ),
+                    ty: AnnotationType::Error,
+                },
+                None,
+            ),
+            InvalidLibraryName(span) => span_to_snippet(
+                span,
+                srcs,
+                ErrText {
+                    text: "invalid library name".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "library name components must match ^[a-z][a-z0-9]*$".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                None,
+            ),
+            EmptyTableOrUnion(span) => span_to_snippet(
+                span,
+                srcs,
+                ErrText {
+                    text: "empty table or union".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "tables and unions must have at least one non reserved member"
+                        .to_string(),
+                    ty: AnnotationType::Error,
+                },
+                Some(Annotation {
+                    label: Some(
+                        "try using an empty struct to define a placeholder member".to_string(),
+                    ),
+                    id: None,
+                    annotation_type: AnnotationType::Help,
+                }),
+            ),
             OobOrdinals {
                 decl_span,
                 ordinal_spans,
