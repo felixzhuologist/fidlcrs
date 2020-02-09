@@ -323,7 +323,7 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn resolve_type(&self, ty: Spanned<Box<raw::Type>>) -> Result<Spanned<Box<Type>>, Error> {
+    fn resolve_type(&self, ty: Spanned<Box<raw::Type>>) -> Result<Spanned<TypeRef>, Error> {
         unimplemented!()
     }
 

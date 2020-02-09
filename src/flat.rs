@@ -1,4 +1,4 @@
-use crate::raw::{Attribute, IntLiteral, Literal, Spanned, Strictness};
+use crate::raw::{Attribute, IntLiteral, Literal, Spanned, Strictness, Type as RawType};
 use std::collections::HashMap;
 
 pub mod errors;
@@ -37,13 +37,13 @@ pub enum Decl {
 pub struct Alias {
     pub attributes: Vec<Spanned<Attribute>>,
     pub name: Spanned<String>,
-    pub ty: Spanned<Box<Type>>,
+    pub ty: Spanned<TypeRef>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ConstDecl {
     pub attributes: Vec<Spanned<Attribute>>,
-    pub ty: Spanned<Box<Type>>,
+    pub ty: Spanned<TypeRef>,
     pub name: Spanned<String>,
     pub value: Spanned<ConstVal>,
 }
@@ -52,7 +52,7 @@ pub struct ConstDecl {
 pub struct Bits {
     pub attributes: Vec<Spanned<Attribute>>,
     pub strictness: Option<Spanned<Strictness>>,
-    pub ty: Option<Spanned<Box<Type>>>,
+    pub ty: Option<Spanned<TypeRef>>,
     pub name: Spanned<String>,
     pub members: Vec<Spanned<BitsMember>>,
 }
@@ -68,7 +68,7 @@ pub struct BitsMember {
 pub struct Enum {
     pub attributes: Vec<Spanned<Attribute>>,
     pub strictness: Option<Spanned<Strictness>>,
-    pub ty: Option<Spanned<Box<Type>>>,
+    pub ty: Option<Spanned<TypeRef>>,
     pub name: Spanned<String>,
     pub members: Vec<Spanned<EnumMember>>,
 }
@@ -90,7 +90,7 @@ pub struct Struct {
 #[derive(Debug, Clone)]
 pub struct StructMember {
     pub attributes: Vec<Spanned<Attribute>>,
-    pub ty: Spanned<Box<Type>>,
+    pub ty: Spanned<TypeRef>,
     pub name: Spanned<String>,
     pub default_value: Option<Spanned<ConstVal>>,
 }
@@ -115,7 +115,7 @@ pub struct TableMember {
 pub enum TableMemberInner {
     Reserved,
     Used {
-        ty: Spanned<Box<Type>>,
+        ty: Spanned<TypeRef>,
         name: Spanned<String>,
         default_value: Option<Spanned<ConstVal>>,
     },
@@ -140,7 +140,7 @@ pub struct UnionMember {
 pub enum UnionMemberInner {
     Reserved,
     Used {
-        ty: Spanned<Box<Type>>,
+        ty: Spanned<TypeRef>,
         name: Spanned<String>,
     },
 }
@@ -159,14 +159,14 @@ pub struct Method {
     pub name: Spanned<String>,
     pub request: Option<Vec<Spanned<Parameter>>>,
     pub response: Option<Vec<Spanned<Parameter>>>,
-    pub error: Option<Spanned<Box<Type>>>,
+    pub error: Option<Spanned<TypeRef>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Parameter {
     pub attributes: Vec<Spanned<Attribute>>,
     pub name: Spanned<String>,
-    pub ty: Spanned<Box<Type>>,
+    pub ty: Spanned<TypeRef>,
 }
 
 #[derive(Debug, Clone)]
@@ -189,6 +189,15 @@ pub enum ConstVal {
     Literal(Spanned<Literal>),
 }
 
+/// A valid reference to a type. Stores the fully resolved type, as well as
+/// maybe the alias used to refer to that fully resolved type.
+#[derive(Debug, Clone)]
+pub struct TypeRef {
+    alias: Option<RawType>,
+    resolved_type: Type,
+}
+
+/// A fully resolved type
 #[derive(Debug, Clone)]
 pub enum Type {
     Array {
@@ -213,10 +222,9 @@ pub enum Type {
         nullable: bool,
     },
     Primitive(PrimitiveSubtype),
+    // this is a user defined type (a struct/table/union/enum/bits, etc.)
     Identifier {
         name: Spanned<Name>,
-        layout: Option<Spanned<Box<Type>>>,
-        constraint: Option<Spanned<ConstVal>>,
         nullable: bool,
     },
 }
