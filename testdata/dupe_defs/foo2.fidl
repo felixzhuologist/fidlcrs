@@ -1,0 +1,7 @@
+library foo;
+
+union Foo {
+  1: bool foo;
+  2: reserved;
+};
+

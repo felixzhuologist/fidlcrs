@@ -7,7 +7,8 @@ use crate::lexer::Span;
 use crate::raw;
 use crate::raw::{Attribute, FidlType, File, LibraryName, Spanned};
 use crate::source_file::FileMap;
-use annotate_snippets::snippet::Snippet;
+use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
+use std::cmp;
 use std::collections::HashMap;
 
 #[derive(Default)]
@@ -66,10 +67,14 @@ impl Flattener {
         self.files.push(file);
     }
 
-    pub fn finish(self) -> (ResolverContext, Vec<Error>) {
-        let _errors = raw::validate::validate_attributes(&self.attributes, FidlType::Library);
-        // TODO: we need to refactor Span to know about file Ids before being able to reuse the
-        // code from raw:: here.
+    pub fn finish(mut self) -> (ResolverContext, Vec<Error>) {
+        let errors = raw::validate::validate_attributes(&self.attributes, FidlType::Library);
+        self.errors.extend(
+            errors
+                .into_iter()
+                .map(|e| Error::ValidationError(e))
+                .collect::<Vec<_>>(),
+        );
 
         let result = ResolverContext {
             attributes: self.attributes,
@@ -110,10 +115,161 @@ pub enum Error {
         existing_span: Span,
         conflicting_span: Span,
     },
+    // Really the only errors that can occur here are the attribute related
+    // ones.
+    ValidationError(raw::errors::Error),
 }
 
 impl Error {
-    pub fn into_snippet(self, _srcs: &FileMap) -> Snippet {
-        unimplemented!()
+    pub fn into_snippet(self, srcs: &FileMap) -> Snippet {
+        use Error::*;
+        match self {
+            LibraryNameInconsistent {
+                existing_name,
+                existing_span,
+                conflicting_name,
+                conflicting_span,
+            } => {
+                let existing_slice = {
+                    let span = existing_span;
+                    let src = srcs.get_file(span.file);
+                    let (line_start, source) = src.surrounding_lines(span.start, span.end);
+                    let source_start = src.lines.offset_at_line_number(line_start);
+                    Slice {
+                        source,
+                        line_start,
+                        origin: Some(src.path.clone()),
+                        fold: false,
+                        annotations: vec![SourceAnnotation {
+                            label: "conflicts with name specified here".to_string(),
+                            annotation_type: AnnotationType::Info,
+                            range: (span.start - source_start, span.end - source_start),
+                        }],
+                    }
+                };
+                let conflicting_slice = {
+                    let span = conflicting_span;
+                    let src = srcs.get_file(span.file);
+                    let (line_start, source) = src.surrounding_lines(span.start, span.end);
+                    let source_start = src.lines.offset_at_line_number(line_start);
+                    Slice {
+                        source,
+                        line_start,
+                        origin: Some(src.path.clone()),
+                        fold: false,
+                        annotations: vec![SourceAnnotation {
+                            label: "library name specified here".to_string(),
+                            annotation_type: AnnotationType::Info,
+                            range: (span.start - source_start, span.end - source_start),
+                        }],
+                    }
+                };
+                Snippet {
+                    title: Some(Annotation {
+                        label: Some("files passed to --files disagree on library name".to_string()),
+                        id: None,
+                        annotation_type: AnnotationType::Error,
+                    }),
+                    footer: vec![Annotation {
+                        label: Some(format!(
+                            "library names are different: {} vs {}",
+                            existing_name, conflicting_name
+                        )),
+                        id: None,
+                        annotation_type: AnnotationType::Info,
+                    }],
+                    slices: vec![conflicting_slice, existing_slice],
+                }
+            }
+            DupeDecl {
+                name,
+                existing_span,
+                conflicting_span,
+            } => {
+                let slices = if existing_span.file == conflicting_span.file {
+                    let src = srcs.get_file(existing_span.file);
+                    let src_start = cmp::min(existing_span.start, conflicting_span.start);
+                    let src_end = cmp::min(existing_span.end, conflicting_span.end);
+                    let (line_start, source) = src.surrounding_lines(src_start, src_end);
+                    let source_start = src.lines.offset_at_line_number(line_start);
+                    vec![Slice {
+                        source,
+                        line_start,
+                        origin: Some(src.path.clone()),
+                        fold: false,
+                        annotations: vec![
+                            SourceAnnotation {
+                                label: "previously defined here".to_string(),
+                                annotation_type: AnnotationType::Info,
+                                range: (
+                                    existing_span.start - source_start,
+                                    existing_span.end - source_start,
+                                ),
+                            },
+                            SourceAnnotation {
+                                label: "definition already exists".to_string(),
+                                annotation_type: AnnotationType::Error,
+                                range: (
+                                    conflicting_span.start - source_start,
+                                    conflicting_span.end - source_start,
+                                ),
+                            },
+                        ],
+                    }]
+                } else {
+                    let orig_slice = {
+                        let src = srcs.get_file(existing_span.file);
+                        let (line_start, source) =
+                            src.surrounding_lines(existing_span.start, existing_span.end);
+                        let source_start = src.lines.offset_at_line_number(line_start);
+                        Slice {
+                            source,
+                            line_start,
+                            origin: Some(src.path.clone()),
+                            fold: false,
+                            annotations: vec![SourceAnnotation {
+                                label: "previously defined here".to_string(),
+                                annotation_type: AnnotationType::Info,
+                                range: (
+                                    existing_span.start - source_start,
+                                    existing_span.end - source_start,
+                                ),
+                            }],
+                        }
+                    };
+                    let dupe_slice = {
+                        let src = srcs.get_file(conflicting_span.file);
+                        let (line_start, source) =
+                            src.surrounding_lines(conflicting_span.start, conflicting_span.end);
+                        let source_start = src.lines.offset_at_line_number(line_start);
+                        Slice {
+                            source,
+                            line_start,
+                            origin: Some(src.path.clone()),
+                            fold: false,
+                            annotations: vec![SourceAnnotation {
+                                label: "definition already exists".to_string(),
+                                annotation_type: AnnotationType::Info,
+                                range: (
+                                    conflicting_span.start - source_start,
+                                    conflicting_span.end - source_start,
+                                ),
+                            }],
+                        }
+                    };
+                    vec![orig_slice, dupe_slice]
+                };
+                Snippet {
+                    title: Some(Annotation {
+                        label: Some(format!("{} is defined twice", name)),
+                        id: None,
+                        annotation_type: AnnotationType::Error,
+                    }),
+                    footer: vec![],
+                    slices,
+                }
+            }
+            ValidationError(err) => err.into_snippet(srcs),
+        }
     }
 }

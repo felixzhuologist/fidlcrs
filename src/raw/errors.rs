@@ -5,7 +5,6 @@ use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, Sou
 use std::cmp;
 
 pub enum Error {
-    // TODO: the span may be invalid for "Doc" attribute keys.
     DuplicateDefinition {
         original: Span,
         duplicate: Span,
@@ -43,13 +42,7 @@ impl Error {
                 decl_type,
                 decl_name,
             } => {
-                let src = srcs.get_file(original.file);
-                let orig_span = original;
-                let dupe_span = duplicate;
-                let src_start = cmp::min(orig_span.start, dupe_span.start);
-                let src_end = cmp::min(orig_span.end, dupe_span.end);
-                let (line_start, source) = src.surrounding_lines(src_start, src_end);
-                let source_start = src.lines.offset_at_line_number(line_start);
+                // TODO: the span may be invalid for "Doc" attribute keys.
 
                 // TODO: provide help for duplicate attributes (in particular doc comments)
                 // if original.value.name.value == "Doc" || duplicate.value.name.value == "Doc" {
@@ -63,14 +56,17 @@ impl Error {
                 //     });
                 // }
 
-                Snippet {
-                    title: Some(Annotation {
-                        label: Some("duplicate definition".to_string()),
-                        id: None,
-                        annotation_type: AnnotationType::Error,
-                    }),
-                    footer: vec![],
-                    slices: vec![Slice {
+                // If the two declarations are in the same file, we output a single slice
+                // of the file with two annotations. If they're in different files, we
+                // need to output to separate slices of the two different files each with
+                // an annotation. There should probably be a way to simplify this logic
+                let slices = if original.file == duplicate.file {
+                    let src = srcs.get_file(original.file);
+                    let src_start = cmp::min(original.start, duplicate.start);
+                    let src_end = cmp::min(original.end, duplicate.end);
+                    let (line_start, source) = src.surrounding_lines(src_start, src_end);
+                    let source_start = src.lines.offset_at_line_number(line_start);
+                    vec![Slice {
                         source,
                         line_start,
                         origin: Some(src.path.clone()),
@@ -82,21 +78,70 @@ impl Error {
                                     decl_type, decl_name
                                 ),
                                 annotation_type: AnnotationType::Info,
-                                range: (
-                                    orig_span.start - source_start,
-                                    orig_span.end - source_start,
-                                ),
+                                range: (original.start - source_start, original.end - source_start),
                             },
                             SourceAnnotation {
-                                label: format!("duplicate definition"),
+                                label: "duplicate definition".to_string(),
                                 annotation_type: AnnotationType::Error,
                                 range: (
-                                    dupe_span.start - source_start,
-                                    dupe_span.end - source_start,
+                                    duplicate.start - source_start,
+                                    duplicate.end - source_start,
                                 ),
                             },
                         ],
-                    }],
+                    }]
+                } else {
+                    let orig_slice = {
+                        let src = srcs.get_file(original.file);
+                        let (line_start, source) =
+                            src.surrounding_lines(original.start, original.end);
+                        let source_start = src.lines.offset_at_line_number(line_start);
+                        Slice {
+                            source,
+                            line_start,
+                            origin: Some(src.path.clone()),
+                            fold: false,
+                            annotations: vec![SourceAnnotation {
+                                label: format!(
+                                    "{} {} originally defined here",
+                                    decl_type, decl_name
+                                ),
+                                annotation_type: AnnotationType::Info,
+                                range: (original.start - source_start, original.end - source_start),
+                            }],
+                        }
+                    };
+                    let dupe_slice = {
+                        let src = srcs.get_file(duplicate.file);
+                        let (line_start, source) =
+                            src.surrounding_lines(duplicate.start, duplicate.end);
+                        let source_start = src.lines.offset_at_line_number(line_start);
+                        Slice {
+                            source,
+                            line_start,
+                            origin: Some(src.path.clone()),
+                            fold: false,
+                            annotations: vec![SourceAnnotation {
+                                label: "duplicate definition".to_string(),
+                                annotation_type: AnnotationType::Info,
+                                range: (
+                                    duplicate.start - source_start,
+                                    duplicate.end - source_start,
+                                ),
+                            }],
+                        }
+                    };
+                    vec![dupe_slice, orig_slice]
+                };
+
+                Snippet {
+                    title: Some(Annotation {
+                        label: Some("duplicate definition".to_string()),
+                        id: None,
+                        annotation_type: AnnotationType::Error,
+                    }),
+                    footer: vec![],
+                    slices,
                 }
             }
             InvalidAttributePlacement { name, placement } => {
