@@ -13,11 +13,8 @@ use std::collections::HashMap;
 
 #[derive(Default)]
 pub struct Flattener {
-    // each file's attributes are moved out and accumulated here
     pub attributes: Vec<Spanned<Attribute>>,
     pub name: Option<(String, Span)>,
-    // TODO: create a type that wraps a (Span, FileId) pair. Or, maybe Span should
-    // be refactored to contain a FileId.
     pub defined_names: HashMap<String, Span>,
     pub errors: Vec<Error>,
     pub files: Vec<File>,
@@ -32,28 +29,11 @@ pub struct ResolverContext {
 
 impl Flattener {
     pub fn add_file(&mut self, mut file: File) {
+        // each file's attributes are moved out and merged together
         self.attributes.extend(file.attributes);
         file.attributes = Vec::new();
 
-        match &self.name {
-            Some((existing_name, span)) => {
-                let name = library_name_as_string(&file.name);
-                if existing_name != &name {
-                    self.errors.push(Error::LibraryNameInconsistent {
-                        existing_name: existing_name.clone(),
-                        existing_span: *span,
-                        conflicting_name: name,
-                        conflicting_span: get_library_name_span(&file.name),
-                    });
-                }
-            }
-            None => {
-                let span = get_library_name_span(&file.name);
-                let name = library_name_as_string(&file.name);
-                self.name = Some((name, span))
-            }
-        };
-
+        self.check_name(&file.name);
         for decl in &file.decls {
             if let Some(dupe) = self.defined_names.insert(decl.value.name(), decl.span) {
                 self.errors.push(Error::DupeDecl {
@@ -84,8 +64,32 @@ impl Flattener {
         };
         (result, self.errors)
     }
+
+    fn check_name(&mut self, lib_name: &LibraryName) {
+        match &self.name {
+            Some((existing_name, span)) => {
+                let name = library_name_as_string(lib_name);
+                if existing_name != &name {
+                    self.errors.push(Error::LibraryNameInconsistent {
+                        existing_name: existing_name.clone(),
+                        existing_span: *span,
+                        conflicting_name: name,
+                        conflicting_span: get_library_name_span(lib_name),
+                    });
+                }
+            }
+            None => {
+                let span = get_library_name_span(lib_name);
+                let name = library_name_as_string(lib_name);
+                self.name = Some((name, span))
+            }
+        };
+    }
 }
 
+// TODO: this code is repeated in the grammar
+// TODO: these two functions can be merged into a single one that takes in a
+// Vec<Spanned<T>> and returns as Spanned<Vec<T>>
 fn library_name_as_string(name: &LibraryName) -> String {
     name.iter()
         .map(|s| s.value.clone())
@@ -93,9 +97,6 @@ fn library_name_as_string(name: &LibraryName) -> String {
         .join(".")
 }
 
-// TODO: this code is repeated in the grammar
-// TODO: these two functions can be merged into a single one that takes in a
-// Vec<Spanned<T>> and returns as Spanned<Vec<T>>
 fn get_library_name_span(name: &LibraryName) -> Span {
     let start = name.first().unwrap().span.start;
     let end = name.last().unwrap().span.start;
