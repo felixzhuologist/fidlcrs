@@ -4,8 +4,8 @@ use crate::raw::{
     Bits,
     BitsMember,
     CompoundIdentifier,
-    ConstVal,
-    ConstDecl,
+    Term,
+    Const,
     Decl,
     Enum,
     EnumMember,
@@ -68,7 +68,7 @@ Decl: Decl = {
         Decl::Alias(Alias{ attributes, name, ty }),
 
     <attributes:AttributeBlock> "const" <ty:Spanned<Type>>
-        <name:Spanned<Identifier>>  "=" <value:Spanned<ConstVal>> => Decl::Const(ConstDecl{ attributes, ty, name, value }),
+        <name:Spanned<Identifier>>  "=" <value:Spanned<Term>> => Decl::Const(Const{ attributes, ty, name, value }),
 
     <attributes:AttributeBlock> <strictness:Strictness> "bits" <name:Spanned<Identifier>> <ty:MaybeType>  "{"
         <members:SemicolonSeparated<BitsMember>>
@@ -133,12 +133,12 @@ MaybeType: Option<Spanned<Box<Type>>> = {
 };
 
 BitsMember: BitsMember = {
-    <attributes:AttributeBlock> <name:Spanned<Identifier>> "=" <value:Spanned<ConstVal>> =>
+    <attributes:AttributeBlock> <name:Spanned<Identifier>> "=" <value:Spanned<Term>> =>
         BitsMember{ attributes, name, value }
 };
 
 EnumMember: EnumMember = {
-    <attributes:AttributeBlock> <name:Spanned<Identifier>> "=" <value:Spanned<ConstVal>> =>
+    <attributes:AttributeBlock> <name:Spanned<Identifier>> "=" <value:Spanned<Term>> =>
         EnumMember{ attributes, name, value }
 };
 
@@ -175,8 +175,8 @@ ServiceMember: ServiceMember = {
         ServiceMember { attributes, protocol, name }
 }
 
-MaybeDefault: Option<Spanned<ConstVal>> = {
-    ("=" <Spanned<ConstVal>>)? => <>
+MaybeDefault: Option<Spanned<Term>> = {
+    ("=" <Spanned<Term>>)? => <>
 };
 
 Strictness: Option<Spanned<Strictness>> = {
@@ -200,8 +200,8 @@ Layout: Option<Spanned<Box<Type>>> = {
     ("<" <Spanned<Type>> ">")? => <>,
 };
 
-Constraint: Option<Spanned<ConstVal>> = {
-    (":" <Spanned<ConstVal>>)? => <>,
+Constraint: Option<Spanned<Term>> = {
+    (":" <Spanned<Term>>)? => <>,
 };
 
 Nullable: bool = {
@@ -209,9 +209,9 @@ Nullable: bool = {
     => false,
 };
 
-ConstVal: ConstVal = {
-    CompoundIdentifier => ConstVal::Identifier(<>),
-    Spanned<Literal> => ConstVal::Literal(<>),
+Term: Term = {
+    CompoundIdentifier => Term::Identifier(<>),
+    Spanned<Literal> => Term::Literal(<>),
 };
 
 Literal: Literal = {

@@ -327,7 +327,7 @@ impl<'a> Resolver<'a> {
         unimplemented!()
     }
 
-    fn resolve_value(&self, val: Spanned<raw::ConstVal>) -> Result<Spanned<ConstVal>, Error> {
+    fn resolve_value(&self, val: Spanned<raw::Term>) -> Result<Spanned<ConstVal>, Error> {
         unimplemented!()
     }
 

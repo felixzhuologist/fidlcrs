@@ -99,7 +99,7 @@ impl Validator {
     fn validate_alias(&mut self, decl: &Alias) {
         self.validate_attributes(&decl.attributes, FidlType::Alias);
     }
-    fn validate_const(&mut self, decl: &ConstDecl) {
+    fn validate_const(&mut self, decl: &Const) {
         self.validate_attributes(&decl.attributes, FidlType::ConstDecl);
     }
 

@@ -24,17 +24,16 @@ pub struct File {
 // TODO: compare this rep and the resolved version. they might be able to be
 // refactored into specializations of a common ast
 
-/// The possible toplevel things that can be declared in a FIDL file. They
-/// comprise of:
-///   - aliases, which store a name to another `Decl`
-///   - `const`s, which declare a value and have a type
-///   - types (structs, bits, enums, tables, and unions)
-///   - protocols (protocol, service)
+/// Each FIDL file consists of a series of Decls, which are statements that define
+/// a term or a type, and add it to the namespace of a Library.
+///   - alias, const, struct, bits, enum, table, and union declare types
+///   - const declares a term
+///   - protocol/service declares a protoco/service
 #[derive(Debug)]
 pub enum Decl {
     Alias(Alias),
 
-    Const(ConstDecl),
+    Const(Const),
 
     Struct(Struct),
     Bits(Bits),
@@ -63,11 +62,11 @@ pub struct Alias {
 }
 
 #[derive(Debug, Clone)]
-pub struct ConstDecl {
+pub struct Const {
     pub attributes: Vec<Spanned<Attribute>>,
     pub ty: Spanned<Box<Type>>,
     pub name: Spanned<String>,
-    pub value: Spanned<ConstVal>,
+    pub value: Spanned<Term>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,7 +82,7 @@ pub struct Bits {
 pub struct BitsMember {
     pub attributes: Vec<Spanned<Attribute>>,
     pub name: Spanned<String>,
-    pub value: Spanned<ConstVal>,
+    pub value: Spanned<Term>,
 }
 
 #[derive(Debug, Clone)]
@@ -99,7 +98,7 @@ pub struct Enum {
 pub struct EnumMember {
     pub attributes: Vec<Spanned<Attribute>>,
     pub name: Spanned<String>,
-    pub value: Spanned<ConstVal>,
+    pub value: Spanned<Term>,
 }
 
 #[derive(Debug, Clone)]
@@ -114,7 +113,7 @@ pub struct StructMember {
     pub attributes: Vec<Spanned<Attribute>>,
     pub ty: Spanned<Box<Type>>,
     pub name: Spanned<String>,
-    pub default_value: Option<Spanned<ConstVal>>,
+    pub default_value: Option<Spanned<Term>>,
 }
 
 #[derive(Debug, Clone)]
@@ -139,7 +138,7 @@ pub enum TableMemberInner {
     Used {
         ty: Spanned<Box<Type>>,
         name: Spanned<String>,
-        default_value: Option<Spanned<ConstVal>>,
+        default_value: Option<Spanned<Term>>,
     },
 }
 
@@ -212,7 +211,7 @@ pub struct Attribute {
 }
 
 #[derive(Debug, Clone)]
-pub enum ConstVal {
+pub enum Term {
     Identifier(CompoundIdentifier),
     Literal(Spanned<Literal>),
 }
@@ -230,7 +229,7 @@ pub enum Literal {
 pub struct Type {
     pub name: CompoundIdentifier,
     pub layout: Option<Spanned<Box<Type>>>,
-    pub constraint: Option<Spanned<ConstVal>>,
+    pub constraint: Option<Spanned<Term>>,
     // doesn't make sense to have a Span in the false case. so just use the end
     // of the previous element
     pub nullable: bool,
