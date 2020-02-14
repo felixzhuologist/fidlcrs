@@ -30,7 +30,7 @@ struct Args {
 fn main() {
     let args: Args = argh::from_env();
 
-    let mut _dependencies = flat::resolve::Dependencies::default();
+    // let mut _dependencies = flat::resolve::Dependencies::default();
     let mut error_cx = errors::ErrorCx::default();
     // TODO: this will be per library
     {
