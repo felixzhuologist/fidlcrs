@@ -1,7 +1,19 @@
 use crate::raw::{Attribute, IntLiteral, Spanned, Strictness};
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt;
+
+pub mod errors;
+pub mod resolve;
+
+// TODO: should this be in resolve instead?
+pub struct Library {
+    pub attributes: Vec<Spanned<Attribute>>,
+    pub name: String,
+    pub term_scope: HashMap<String, Term>,
+    pub type_scope: HashMap<String, Type>,
+}
 
 #[derive(Debug, Clone)]
 pub enum Term {

@@ -30,7 +30,7 @@ struct Args {
 fn main() {
     let args: Args = argh::from_env();
 
-    // let mut _dependencies = flat::resolve::Dependencies::default();
+    let mut dependencies = flat::resolve::Dependencies::default();
     let mut error_cx = errors::ErrorCx::default();
     // TODO: this will be per library
     {
@@ -55,13 +55,13 @@ fn main() {
             };
         }
         if !flattener.files.is_empty() {
-            let (_files, errors) = flattener.finish();
+            let (lib_ctx, errors) = flattener.finish();
             for error in errors {
                 error_cx.add_error(error.into_snippet(&srcs));
             }
-            // let lib = flat::Library::from_files(files, &dependencies);
+            let lib = flat::Library::from_files(lib_ctx, &dependencies);
             // TODO: accumulate errors here
-            // dependencies.add_library(lib);
+            dependencies.add_library(lib);
         }
     }
     error_cx.print_errors();

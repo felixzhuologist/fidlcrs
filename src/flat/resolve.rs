@@ -1,59 +1,68 @@
-// use super::errors::Error;
-// use super::*;
-// use crate::flatten::ResolverContext;
-// use crate::lexer::Span;
-// use crate::raw;
+use super::errors::Error;
+use super::*;
+use crate::flatten::ResolverContext;
+use crate::lexer::Span;
+use crate::raw;
 // use crate::raw::Spanned;
-// use std::collections::HashMap;
+use std::collections::HashMap;
 
-// impl Library {
-//     // TODO: return errors
-//     pub fn from_files(lib_cx: ResolverContext, deps: &Dependencies) -> Library {
-//         let ResolverContext {
-//             attributes,
-//             name,
-//             defined_names,
-//             files,
-//         } = lib_cx;
+impl Library {
+    // TODO: return errors
+    pub fn from_files(lib_cx: ResolverContext, _deps: &Dependencies) -> Library {
+        let ResolverContext {
+            attributes,
+            name,
+            defined_names,
+            files,
+        } = lib_cx;
+        let mut term_scope: HashMap<String, Term> = HashMap::new();
+        let mut type_scope: HashMap<String, Type> = HashMap::new();
+        let mut errors: Vec<Error> = Vec::new();
+        for file in files {
+            match FileImports::from_imports(file.imports) {
+                Err(errs) => {
+                    errors.extend(errs);
+                    continue;
+                }
+                Ok(imports) => unimplemented!(),
+            }
+        }
+        //         // TODO: improve nesting
+        //         for file in files {
+        //             let maybe_imports = ImportContext::from_imports(file.imports);
+        //             match maybe_imports {
+        //                 Err(errs) => {
+        //                     errors.extend(errs);
+        //                     continue;
+        //                 }
+        //                 Ok(ctx) => {
+        //                     let resolver = Resolver::new(&ctx, &defined_names, deps);
+        //                     for decl in file.decls {
+        //                         match decl.try_map(|val| resolver.resolve(val)) {
+        //                             Ok(decl) => {
+        //                                 let result = decls.insert(decl.value.name(), decl);
+        //                                 if result.is_some() {
+        //                                     panic!("did not correctly check for duplicates");
+        //                                 }
+        //                             }
+        //                             Err(err) => errors.push(err),
+        //                         };
+        //                     }
+        //                 }
+        //             }
 
-//         let mut decls: HashMap<String, Spanned<Decl>> = HashMap::new();
-//         let mut errors: Vec<Error> = Vec::new();
-//         // TODO: improve nesting
-//         for file in files {
-//             let maybe_imports = ImportContext::from_imports(file.imports);
-//             match maybe_imports {
-//                 Err(errs) => {
-//                     errors.extend(errs);
-//                     continue;
-//                 }
-//                 Ok(ctx) => {
-//                     let resolver = Resolver::new(&ctx, &defined_names, deps);
-//                     for decl in file.decls {
-//                         match decl.try_map(|val| resolver.resolve(val)) {
-//                             Ok(decl) => {
-//                                 let result = decls.insert(decl.value.name(), decl);
-//                                 if result.is_some() {
-//                                     panic!("did not correctly check for duplicates");
-//                                 }
-//                             }
-//                             Err(err) => errors.push(err),
-//                         };
-//                     }
-//                 }
-//             }
-//         }
+        Library {
+            attributes,
+            name,
+            term_scope,
+            type_scope,
+        }
+    }
 
-//         Library {
-//             attributes,
-//             name,
-//             decls,
-//         }
-//     }
-
-//     pub fn lookup(&self, _var_name: String) -> Option<Spanned<Decl>> {
-//         unimplemented!()
-//     }
-// }
+    // pub fn lookup(&self, _var_name: String) -> Option<Spanned<Decl>> {
+    //     unimplemented!()
+    // }
+}
 
 // pub struct Resolver<'a> {
 //     pub import_cx: &'a ImportContext,
@@ -360,28 +369,169 @@
 //     }
 // }
 
-// // TODO: this will be its own module once it's fleshed out some more
-// #[derive(Default)]
-// pub struct Dependencies {
-//     libraries: HashMap<String, Library>,
-// }
+// TODO: this will be its own module once it's fleshed out some more
+#[derive(Default)]
+pub struct Dependencies {
+    libraries: HashMap<String, Library>,
+}
 
-// impl Dependencies {
-//     pub fn add_library(&mut self, _lib: Library) {
-//         unimplemented!()
-//     }
+impl Dependencies {
+    pub fn add_library(&mut self, _lib: Library) {
+        unimplemented!()
+    }
 
-//     fn lookup(&self, lib_name: &str, var_name: String) -> Option<Spanned<Decl>> {
-//         self.libraries
-//             .get(lib_name)
-//             .and_then(|lib| lib.lookup(var_name))
-//     }
-// }
+    // fn lookup(&self, lib_name: &str, var_name: String) -> Option<Spanned<Decl>> {
+    //     self.libraries
+    //         .get(lib_name)
+    //         .and_then(|lib| lib.lookup(var_name))
+    // }
+}
 
-// pub struct ImportContext {}
+#[derive(Debug)]
+pub struct FileImports {
+    /// Each full import has an entry in `imports` with a value of None, and each
+    /// aliased import has an entry in `imports` with a value of Some of the full
+    /// import that it's aliasing.
+    // TODO: this needs many copies of each import string. we could do better at
+    // the expense of more searching (e.g. a Vector of absolute imports, and a map
+    // from alias to index in that owning vector)
+    imports: HashMap<String, Option<String>>,
+}
 
-// impl ImportContext {
-//     pub fn from_imports(_imports: Vec<Spanned<raw::Import>>) -> Result<ImportContext, Vec<Error>> {
-//         unimplemented!()
-//     }
-// }
+impl FileImports {
+    // NOTE: this only takes in raw:: data, so technically this can be done during the File
+    // "validation" step as well. but conceptually it belongs here and this at least avoids some
+    // duplicate work. Alternatively, validation could transform the File.
+    // TODO: does it even make sense to return multiple errors here?
+    pub fn from_imports(imports: Vec<Spanned<raw::Import>>) -> Result<FileImports, Vec<Error>> {
+        let mut import_map: HashMap<String, (Span, Option<String>)> = HashMap::new();
+        let mut errors: Vec<Error> = Vec::new();
+        for import in imports {
+            let absolute_name = import.value.name.value.join(".");
+            // add the absolute import
+            let span = import.value.name.span;
+            if let Some((entry_span, entry)) =
+                import_map.insert(absolute_name.clone(), (span, None))
+            {
+                errors.push(match entry {
+                    Some(name) => Error::ImportNameConflict {
+                        name: name.clone(),
+                        orig: entry_span,
+                        dupe: span,
+                    },
+                    None => Error::DuplicateImport {
+                        import: absolute_name.clone(),
+                        orig: entry_span,
+                        dupe: span,
+                    },
+                });
+                continue;
+            }
+
+            // add the alias
+            if let Some(alias) = import.value.alias {
+                let span = alias.span;
+                let name = alias.value;
+                if let Some((entry_span, entry)) =
+                    import_map.insert(name.clone(), (span, Some(absolute_name.clone())))
+                {
+                    errors.push(Error::ImportNameConflict {
+                        name: name,
+                        orig: entry_span,
+                        dupe: span,
+                    })
+                }
+            }
+        }
+        if errors.is_empty() {
+            let without_spans = import_map
+                .into_iter()
+                .map(|(k, v)| (k, v.1))
+                .collect::<HashMap<_, _>>();
+            Ok(FileImports {
+                imports: without_spans,
+            })
+        } else {
+            Err(errors)
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::parser::parse;
+    use crate::source_file::SourceFile;
+    use crate::span::FileId;
+
+    #[test]
+    fn import_success() {
+        let contents = r#"library test;
+using foo;
+using bar;
+"#;
+        let src = SourceFile::new(FileId(0), "test.fidl".to_string(), contents.to_string());
+        let file = parse(&src).unwrap();
+        assert_eq!(FileImports::from_imports(file.imports).is_ok(), true);
+    }
+
+    #[test]
+    fn import_dupe_no_alias() {
+        let contents = r#"library test;
+using foo;
+using foo;
+"#;
+        let src = SourceFile::new(FileId(0), "test.fidl".to_string(), contents.to_string());
+        let file = parse(&src).unwrap();
+        let errs = FileImports::from_imports(file.imports).unwrap_err();
+        assert_eq!(errs.len(), 1);
+        match errs[0] {
+            Error::DuplicateImport {
+                import: _,
+                orig: _,
+                dupe: _,
+            } => (),
+            _ => assert!(false),
+        }
+    }
+
+    #[test]
+    fn import_dupe_aliases() {
+        let contents = r#"library test;
+using foo as bar;
+using foo as baz;
+"#;
+        let src = SourceFile::new(FileId(0), "test.fidl".to_string(), contents.to_string());
+        let file = parse(&src).unwrap();
+        let errs = FileImports::from_imports(file.imports).unwrap_err();
+        assert_eq!(errs.len(), 1);
+        match errs[0] {
+            Error::DuplicateImport {
+                import: _,
+                orig: _,
+                dupe: _,
+            } => (),
+            _ => assert!(false),
+        }
+    }
+
+    #[test]
+    fn import_conflict() {
+        let contents = r#"library test;
+using foo;
+using bar as foo;
+"#;
+        let src = SourceFile::new(FileId(0), "test.fidl".to_string(), contents.to_string());
+        let file = parse(&src).unwrap();
+        let errs = FileImports::from_imports(file.imports).unwrap_err();
+        assert_eq!(errs.len(), 1);
+        match errs[0] {
+            Error::ImportNameConflict {
+                name: _,
+                orig: _,
+                dupe: _,
+            } => (),
+            _ => assert!(false),
+        }
+    }
+}
