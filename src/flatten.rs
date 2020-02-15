@@ -11,19 +11,25 @@ use crate::source_file::FileMap;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Snippet};
 use std::collections::HashMap;
 
+pub struct NameDef {
+    span: Span,
+    inner_scope: Option<HashMap<String, Span>>,
+}
+
 #[derive(Default)]
 pub struct Flattener {
     pub attributes: Vec<Spanned<Attribute>>,
     pub name: Option<(String, Span)>,
-    pub defined_names: HashMap<String, Span>,
+    pub defined_names: HashMap<String, NameDef>,
     pub errors: Vec<Error>,
     pub files: Vec<File>,
 }
 
+// TODO: is this necessary? it's just Flattener without errors for now.
 pub struct ResolverContext {
     pub attributes: Vec<Spanned<Attribute>>,
     pub name: String,
-    pub defined_names: HashMap<String, Span>,
+    pub defined_names: HashMap<String, NameDef>,
     pub files: Vec<File>,
 }
 
@@ -35,10 +41,33 @@ impl Flattener {
 
         self.check_name(&file.name);
         for decl in &file.decls {
-            if let Some(dupe) = self.defined_names.insert(decl.value.name(), decl.span) {
+            let inner_scope = match &decl.value {
+                // we may want to refactor this logic into an is_block() of some sort. but right
+                // now it's simple enough just ot have inline
+                raw::Decl::Bits(ref val) => {
+                    let mut member_scope = HashMap::new();
+                    for member in &val.members {
+                        member_scope.insert(member.value.name.value.clone(), member.span);
+                    }
+                    Some(member_scope)
+                }
+                raw::Decl::Enum(ref val) => {
+                    let mut member_scope = HashMap::new();
+                    for member in &val.members {
+                        member_scope.insert(member.value.name.value.clone(), member.span);
+                    }
+                    Some(member_scope)
+                }
+                _ => None,
+            };
+            let entry = NameDef {
+                span: decl.span,
+                inner_scope,
+            };
+            if let Some(dupe) = self.defined_names.insert(decl.value.name(), entry) {
                 self.errors.push(Error::DupeDecl {
                     name: decl.value.name(),
-                    existing_span: dupe,
+                    existing_span: dupe.span,
                     conflicting_span: decl.span,
                 })
             }
