@@ -59,9 +59,15 @@ fn main() {
             for error in errors {
                 error_cx.add_error(error.into_snippet(&srcs));
             }
-            let lib = flat::Library::from_files(lib_ctx, &dependencies);
-            // TODO: accumulate errors here
-            dependencies.add_library(lib);
+            match flat::Library::from_files(lib_ctx, &dependencies) {
+                Ok(lib) => dependencies.add_library(lib),
+                Err(errs) => {
+                    for error in errs {
+                        error_cx.add_error(error.into_snippet(&srcs))
+                    }
+                    // TODO: break here once this is per library
+                }
+            }
         }
     }
     error_cx.print_errors();

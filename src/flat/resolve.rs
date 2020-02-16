@@ -8,7 +8,10 @@ use std::collections::HashMap;
 
 impl Library {
     // TODO: return errors
-    pub fn from_files(lib_cx: ResolverContext, _deps: &Dependencies) -> Library {
+    pub fn from_files(
+        lib_cx: ResolverContext,
+        _deps: &Dependencies,
+    ) -> Result<Library, Vec<Error>> {
         let ResolverContext {
             attributes,
             name,
@@ -17,15 +20,11 @@ impl Library {
         } = lib_cx;
         let mut term_scope: HashMap<String, Term> = HashMap::new();
         let mut type_scope: HashMap<String, Type> = HashMap::new();
-        let mut errors: Vec<Error> = Vec::new();
+        let mut _errors: Vec<Error> = Vec::new();
         for file in files {
-            match FileImports::from_imports(file.imports) {
-                Err(errs) => {
-                    errors.extend(errs);
-                    continue;
-                }
-                Ok(imports) => unimplemented!(),
-            }
+            // TODO: can we continue here? note that on import duplicates, currently the old one
+            // is overwritten in the new one. instead, it should just not exist?
+            let _imports = FileImports::from_imports(file.imports)?;
         }
         //         // TODO: improve nesting
         //         for file in files {
@@ -51,12 +50,12 @@ impl Library {
         //                 }
         //             }
 
-        Library {
+        Ok(Library {
             attributes,
             name,
             term_scope,
             type_scope,
-        }
+        })
     }
 
     // pub fn lookup(&self, _var_name: String) -> Option<Spanned<Decl>> {
@@ -432,7 +431,7 @@ impl FileImports {
             if let Some(alias) = import.value.alias {
                 let span = alias.span;
                 let name = alias.value;
-                if let Some((entry_span, entry)) =
+                if let Some((entry_span, _)) =
                     import_map.insert(name.clone(), (span, Some(absolute_name.clone())))
                 {
                     errors.push(Error::ImportNameConflict {

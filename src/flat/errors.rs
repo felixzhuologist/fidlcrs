@@ -1,4 +1,7 @@
 use crate::lexer::Span;
+use crate::source_file::FileMap;
+use annotate_snippets::snippet::Snippet;
+// use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 
 pub enum Error {
     DuplicateImport {
@@ -11,4 +14,10 @@ pub enum Error {
         orig: Span,
         dupe: Span,
     },
+}
+
+impl Error {
+    pub fn into_snippet(self, _srcs: &FileMap) -> Snippet {
+        unimplemented!()
+    }
 }
