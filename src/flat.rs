@@ -1,4 +1,4 @@
-use crate::raw::{Attribute, IntLiteral, Spanned, Strictness};
+use crate::raw::{Attributes, IntLiteral, Spanned, Strictness};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -7,17 +7,39 @@ use std::fmt;
 pub mod errors;
 pub mod resolve;
 
+// we can't place the attributes directly into the term/type, because
+// it's associated with the _declaration_ of that value, and not its usage
+// as an rhs value. for example, in the statement
+//
+// [Foo = "bar"] const uint8 x = 3;
+//
+// it doesn't make sense to associate the attributes with the rhs (3), rather
+// it needs to be stored alongside the scope entry for x.
+//
+// we get away with storing attributes inline on protocols and services
+// because they can never be used in an rhs expression. for the term scope,
+// each entry has a Type, which is the user specificed type ascription for that
+// entry (this can't be inline on Term for the same reason as attributes).
+//
+// note that this means that if we ever modelled builtins as a scope, each entry
+// would need to explicitly specify no attributes (e.g. for uint8)
+pub type TypeScope = HashMap<String, (Attributes, Type)>;
+pub type TermScope = HashMap<String, (Attributes, Type, Term)>;
+
 // TODO: should this be in resolve instead?
 pub struct Library {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: String,
-    pub term_scope: HashMap<String, Term>,
-    pub type_scope: HashMap<String, Type>,
+
+    pub terms: TermScope,
+    pub types: TypeScope,
+    pub protocols: HashMap<String, Protocol>,
+    pub services: HashMap<String, Service>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Term {
-    Identifier(Name, Box<Type>),
+    Identifier(Name),
     Str(String),
     Int(IntLiteral),
     Float(f64),
@@ -73,7 +95,6 @@ pub enum Type {
 // TODO: these types don't need to have names on them, remove?
 #[derive(Debug, Clone)]
 pub struct Bits {
-    pub attributes: Vec<Spanned<Attribute>>,
     pub strictness: Option<Spanned<Strictness>>,
     pub ty: Option<Spanned<Box<Type>>>,
     pub name: Spanned<String>,
@@ -82,14 +103,13 @@ pub struct Bits {
 
 #[derive(Debug, Clone)]
 pub struct BitsMember {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub value: Spanned<Term>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Enum {
-    pub attributes: Vec<Spanned<Attribute>>,
     pub strictness: Option<Spanned<Strictness>>,
     pub ty: Option<Spanned<Box<Type>>>,
     pub name: Spanned<String>,
@@ -98,21 +118,20 @@ pub struct Enum {
 
 #[derive(Debug, Clone)]
 pub struct EnumMember {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub value: Spanned<Term>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Struct {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub members: Vec<Spanned<StructMember>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct StructMember {
-    pub attributes: Vec<Spanned<Attribute>>,
     pub ty: Spanned<Box<Type>>,
     pub name: Spanned<String>,
     pub default_value: Option<Spanned<Term>>,
@@ -120,7 +139,6 @@ pub struct StructMember {
 
 #[derive(Debug, Clone)]
 pub struct Table {
-    pub attributes: Vec<Spanned<Attribute>>,
     pub strictness: Option<Spanned<Strictness>>,
     pub name: Spanned<String>,
     pub members: Vec<Spanned<TableMember>>,
@@ -128,7 +146,7 @@ pub struct Table {
 
 #[derive(Debug, Clone)]
 pub struct TableMember {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub ordinal: Spanned<IntLiteral>,
     // TODO: naming :(
     pub inner: TableMemberInner,
@@ -146,7 +164,6 @@ pub enum TableMemberInner {
 
 #[derive(Debug, Clone)]
 pub struct Union {
-    pub attributes: Vec<Spanned<Attribute>>,
     pub strictness: Option<Spanned<Strictness>>,
     pub name: Spanned<String>,
     pub members: Vec<Spanned<UnionMember>>,
@@ -154,7 +171,7 @@ pub struct Union {
 
 #[derive(Debug, Clone)]
 pub struct UnionMember {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub ordinal: Spanned<IntLiteral>,
     pub inner: UnionMemberInner,
 }
@@ -170,7 +187,7 @@ pub enum UnionMemberInner {
 
 #[derive(Debug, Clone)]
 pub struct Protocol {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub methods: Vec<Spanned<Method>>,
     pub compose: Vec<Name>,
@@ -178,7 +195,7 @@ pub struct Protocol {
 
 #[derive(Debug, Clone)]
 pub struct Method {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub request: Option<Vec<Spanned<Parameter>>>,
     pub response: Option<Vec<Spanned<Parameter>>>,
@@ -187,33 +204,23 @@ pub struct Method {
 
 #[derive(Debug, Clone)]
 pub struct Parameter {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub ty: Spanned<Box<Type>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Service {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub members: Vec<Spanned<ServiceMember>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ServiceMember {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub protocol: Name,
     pub name: Spanned<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Identifier {
-    pub name: Name,
-    pub layout: Option<Spanned<Box<Type>>>,
-    pub constraint: Option<Spanned<Term>>,
-    // doesn't make sense to have a Span in the false case. so just use the end
-    // of the previous element
-    pub nullable: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -269,6 +276,8 @@ pub struct Str {
     pub bounds: Option<Box<Term>>,
 }
 
+// NOTE: the either layout or constraint should be Some, otherwise this would just be flattened
+// directly into `func`
 /// Substitute layout and constraint into the func type, e.g. func<layout>:constraint
 #[derive(Debug, Clone)]
 pub struct TypeSubstitution {
@@ -353,16 +362,17 @@ impl fmt::Display for Kind {
     }
 }
 
-pub trait Scope {
+// this concept should be merged with Scope?
+pub trait Namespace {
     fn lookup_term(&self, name: &Name) -> Option<&Term>;
     fn lookup_ty(&self, name: &Name) -> Option<&Type>;
     fn lookup_kind(&self, name: &Name) -> Option<&Kind>;
 }
 
-pub fn eval<T: Scope>(term: &Term, scope: &T) -> Result<Term, Name> {
+pub fn eval<T: Namespace>(term: &Term, scope: &T) -> Result<Term, Name> {
     use Term::*;
     match term {
-        Identifier(ref name, _) => match scope.lookup_term(name) {
+        Identifier(ref name) => match scope.lookup_term(name) {
             Some(ref t) => eval(t, scope),
             None => Err(name.clone()),
         },
@@ -372,10 +382,10 @@ pub fn eval<T: Scope>(term: &Term, scope: &T) -> Result<Term, Name> {
 
 // NOTE: this is currently the same as eval, since we only have identifiers and
 // literals
-pub fn resolve<T: Scope>(term: &Term, scope: &T) -> Result<Term, Name> {
+pub fn resolve<T: Namespace>(term: &Term, scope: &T) -> Result<Term, Name> {
     use Term::*;
     match term {
-        Identifier(ref name, _) => match scope.lookup_term(name) {
+        Identifier(ref name) => match scope.lookup_term(name) {
             Some(ref t) => resolve(t, scope),
             None => Err(name.clone()),
         },
@@ -392,11 +402,12 @@ pub fn resolve<T: Scope>(term: &Term, scope: &T) -> Result<Term, Name> {
 // const uint8 y = x;
 // const uint32 z = y;
 // kindchecking is handled in this way.
-pub fn typecheck<T: Scope>(term: &Term, scope: &T) -> Result<Type, ()> {
+pub fn typecheck<T: Namespace>(term: &Term, scope: &T) -> Result<Type, ()> {
     match term {
-        Term::Identifier(_, ty) => {
+        Term::Identifier(_) => {
             let resolved = resolve(term, scope).map_err(|_| ())?;
-            let expected_ty = *ty.clone();
+            // this comes from the scope
+            let expected_ty = unimplemented!();
             match (resolved, &expected_ty) {
                 // TODO: check bounds. to do this, we need to kind check and
                 // type eval the bounds
@@ -414,7 +425,7 @@ pub fn typecheck<T: Scope>(term: &Term, scope: &T) -> Result<Type, ()> {
                 | (Term::True, Type::Bool)
                 | (Term::False, Type::Bool) => Ok(Type::Bool),
                 (_, Type::Int) => panic!("users can't specify untyped Ints"),
-                (Term::Identifier(_, _), _) => panic!("should be fully resolved"),
+                (Term::Identifier(_), _) => panic!("should be fully resolved"),
                 _ => Err(()),
             }
         }
@@ -427,7 +438,7 @@ pub fn typecheck<T: Scope>(term: &Term, scope: &T) -> Result<Type, ()> {
 
 // TODO: make evalable a trait? or move this to a method?
 // TODO: do we fuly evaluate the terms as well?
-pub fn eval_ty<T: Scope>(ty: &Type, scope: &T) -> Result<Type, Name> {
+pub fn eval_ty<T: Namespace>(ty: &Type, scope: &T) -> Result<Type, Name> {
     match ty {
         Type::Identifier(ref name) => match scope.lookup_ty(name) {
             Some(ref ty) => eval_ty(ty, scope),
@@ -486,7 +497,7 @@ pub fn eval_ty<T: Scope>(ty: &Type, scope: &T) -> Result<Type, Name> {
     }
 }
 
-pub fn kind_check<T: Scope>(ty: &Type, scope: &T) -> Result<Kind, Name> {
+pub fn kind_check<T: Namespace>(ty: &Type, scope: &T) -> Result<Kind, Name> {
     match ty {
         // TODO: finish implementing, and also share this code.
         Type::Struct(val) => {

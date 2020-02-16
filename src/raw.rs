@@ -13,9 +13,11 @@ pub type Spanned<T> = span::Spanned<T, usize>;
 pub type LibraryName = Vec<Spanned<String>>;
 pub type CompoundIdentifier = Spanned<Vec<String>>;
 
+pub type Attributes = Vec<Spanned<Attribute>>;
+
 #[derive(Debug)]
 pub struct File {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: LibraryName,
     pub imports: Vec<Spanned<Import>>,
     pub decls: Vec<Spanned<Decl>>,
@@ -49,21 +51,21 @@ pub enum Decl {
 pub struct Import {
     // This is actually not allowed but we allow it at the lexing/parsing stage
     // to avoid grammar ambiguities
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: CompoundIdentifier,
     pub alias: Option<Spanned<String>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Alias {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub ty: Spanned<Box<Type>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Const {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub ty: Spanned<Box<Type>>,
     pub name: Spanned<String>,
     pub value: Spanned<Term>,
@@ -71,7 +73,7 @@ pub struct Const {
 
 #[derive(Debug, Clone)]
 pub struct Bits {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub strictness: Option<Spanned<Strictness>>,
     pub ty: Option<Spanned<Box<Type>>>,
     pub name: Spanned<String>,
@@ -80,14 +82,14 @@ pub struct Bits {
 
 #[derive(Debug, Clone)]
 pub struct BitsMember {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub value: Spanned<Term>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Enum {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub strictness: Option<Spanned<Strictness>>,
     pub ty: Option<Spanned<Box<Type>>>,
     pub name: Spanned<String>,
@@ -96,21 +98,21 @@ pub struct Enum {
 
 #[derive(Debug, Clone)]
 pub struct EnumMember {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub value: Spanned<Term>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Struct {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub members: Vec<Spanned<StructMember>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct StructMember {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub ty: Spanned<Box<Type>>,
     pub name: Spanned<String>,
     pub default_value: Option<Spanned<Term>>,
@@ -118,7 +120,7 @@ pub struct StructMember {
 
 #[derive(Debug, Clone)]
 pub struct Table {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub strictness: Option<Spanned<Strictness>>,
     pub name: Spanned<String>,
     pub members: Vec<Spanned<TableMember>>,
@@ -126,7 +128,7 @@ pub struct Table {
 
 #[derive(Debug, Clone)]
 pub struct TableMember {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub ordinal: Spanned<IntLiteral>,
     // TODO: naming :(
     pub inner: TableMemberInner,
@@ -144,7 +146,7 @@ pub enum TableMemberInner {
 
 #[derive(Debug, Clone)]
 pub struct Union {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub strictness: Option<Spanned<Strictness>>,
     pub name: Spanned<String>,
     pub members: Vec<Spanned<UnionMember>>,
@@ -152,7 +154,7 @@ pub struct Union {
 
 #[derive(Debug, Clone)]
 pub struct UnionMember {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub ordinal: Spanned<IntLiteral>,
     pub inner: UnionMemberInner,
 }
@@ -168,7 +170,7 @@ pub enum UnionMemberInner {
 
 #[derive(Debug, Clone)]
 pub struct Protocol {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub methods: Vec<Spanned<Method>>,
     pub compose: Vec<CompoundIdentifier>,
@@ -176,7 +178,7 @@ pub struct Protocol {
 
 #[derive(Debug, Clone)]
 pub struct Method {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub request: Option<Vec<Spanned<Parameter>>>,
     pub response: Option<Vec<Spanned<Parameter>>>,
@@ -185,21 +187,21 @@ pub struct Method {
 
 #[derive(Debug, Clone)]
 pub struct Parameter {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub ty: Spanned<Box<Type>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Service {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Spanned<String>,
     pub members: Vec<Spanned<ServiceMember>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ServiceMember {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub protocol: CompoundIdentifier,
     pub name: Spanned<String>,
 }

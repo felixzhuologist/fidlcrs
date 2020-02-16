@@ -12,7 +12,7 @@ pub fn validate_file(file: &File) -> Vec<Error> {
     return validator.errors;
 }
 
-pub fn validate_attributes(attrs: &Vec<Spanned<Attribute>>, placement: FidlType) -> Vec<Error> {
+pub fn validate_attributes(attrs: &Attributes, placement: FidlType) -> Vec<Error> {
     let mut validator = Validator::new();
     validator.validate_attributes(attrs, placement);
     return validator.errors;
@@ -58,7 +58,7 @@ impl Validator {
         }
     }
 
-    fn validate_attributes(&mut self, attrs: &Vec<Spanned<Attribute>>, placement: FidlType) {
+    fn validate_attributes(&mut self, attrs: &Attributes, placement: FidlType) {
         self.check_for_duplicates(attrs, FidlType::Attribute);
         for attr in attrs {
             self.validate_attribute(&attr, placement);

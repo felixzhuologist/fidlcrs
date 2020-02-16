@@ -6,10 +6,12 @@
 use crate::errors::{two_spans_to_snippet, ErrText};
 use crate::lexer::Span;
 use crate::raw;
-use crate::raw::{Attribute, FidlType, File, LibraryName, Spanned};
+use crate::raw::{Attributes, FidlType, File, LibraryName};
 use crate::source_file::FileMap;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Snippet};
 use std::collections::HashMap;
+
+pub type UnresolvedScope = HashMap<String, NameDef>;
 
 pub struct NameDef {
     span: Span,
@@ -18,7 +20,7 @@ pub struct NameDef {
 
 #[derive(Default)]
 pub struct Flattener {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: Option<(String, Span)>,
     pub defined_names: HashMap<String, NameDef>,
     pub errors: Vec<Error>,
@@ -27,7 +29,7 @@ pub struct Flattener {
 
 // TODO: is this necessary? it's just Flattener without errors for now.
 pub struct ResolverContext {
-    pub attributes: Vec<Spanned<Attribute>>,
+    pub attributes: Attributes,
     pub name: String,
     pub defined_names: HashMap<String, NameDef>,
     pub files: Vec<File>,

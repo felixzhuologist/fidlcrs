@@ -1,6 +1,7 @@
 use crate::raw::{
     Alias,
     Attribute,
+    Attributes,
     Bits,
     BitsMember,
     CompoundIdentifier,
@@ -222,7 +223,7 @@ Literal: Literal = {
     "false" => Literal::False,
 };
 
-AttributeBlock: Vec<Spanned<Attribute>> = {
+AttributeBlock: Attributes = {
     <lines:Spanned<doc_comment>*> <attrs:AttributeList> => {
         let mut attrs = attrs;
         if !lines.is_empty() {
@@ -243,7 +244,7 @@ AttributeBlock: Vec<Spanned<Attribute>> = {
     }
 }
 
-AttributeList: Vec<Spanned<Attribute>> = {
+AttributeList: Attributes = {
     ("[" <CommaSeparatedNonEmpty<Attribute>> "]")? => match <> {
         Some(v) => v,
         None => Vec::new(),

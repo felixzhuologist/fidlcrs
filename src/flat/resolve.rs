@@ -1,6 +1,6 @@
 use super::errors::Error;
 use super::*;
-use crate::flatten::ResolverContext;
+use crate::flatten::{ResolverContext, UnresolvedScope};
 use crate::lexer::Span;
 use crate::raw;
 // use crate::raw::Spanned;
@@ -8,53 +8,65 @@ use std::collections::HashMap;
 
 impl Library {
     // TODO: return errors
-    pub fn from_files(
-        lib_cx: ResolverContext,
-        _deps: &Dependencies,
-    ) -> Result<Library, Vec<Error>> {
+    pub fn from_files(lib_cx: ResolverContext, deps: &Dependencies) -> Result<Library, Vec<Error>> {
         let ResolverContext {
             attributes,
             name,
             defined_names,
             files,
         } = lib_cx;
-        let mut term_scope: HashMap<String, Term> = HashMap::new();
-        let mut type_scope: HashMap<String, Type> = HashMap::new();
+        let mut terms: TermScope = HashMap::new();
+        let mut types: TypeScope = HashMap::new();
+        let mut protocols: HashMap<String, Protocol> = HashMap::new();
+        let mut services: HashMap<String, Service> = HashMap::new();
         let mut _errors: Vec<Error> = Vec::new();
         for file in files {
             // TODO: can we continue here? note that on import duplicates, currently the old one
             // is overwritten in the new one. instead, it should just not exist?
-            let _imports = FileImports::from_imports(file.imports)?;
+            let imports = FileImports::from_imports(file.imports)?;
+            let resolver = Resolver {
+                imports: &imports,
+                local_names: &defined_names,
+                imported_names: deps,
+            };
+            for decl in file.decls {
+                match decl.value {
+                    raw::Decl::Alias(raw::Alias {
+                        attributes,
+                        name,
+                        ty,
+                    }) => {
+                        let resolved = resolver.resolve_type(ty);
+                        types.insert(name.value, (attributes, resolved));
+                    }
+                    raw::Decl::Const(raw::Const {
+                        attributes,
+                        ty,
+                        name,
+                        value,
+                    }) => {
+                        let ty = resolver.resolve_type(ty);
+                        let term = resolver.resolve_term(value);
+                        terms.insert(name.value, (attributes, ty, term));
+                    }
+                    raw::Decl::Struct(_) => unimplemented!(),
+                    raw::Decl::Bits(_) => unimplemented!(),
+                    raw::Decl::Enum(_) => unimplemented!(),
+                    raw::Decl::Table(_) => unimplemented!(),
+                    raw::Decl::Union(_) => unimplemented!(),
+                    raw::Decl::Protocol(_) => unimplemented!(),
+                    raw::Decl::Service(_) => unimplemented!(),
+                }
+            }
         }
-        //         // TODO: improve nesting
-        //         for file in files {
-        //             let maybe_imports = ImportContext::from_imports(file.imports);
-        //             match maybe_imports {
-        //                 Err(errs) => {
-        //                     errors.extend(errs);
-        //                     continue;
-        //                 }
-        //                 Ok(ctx) => {
-        //                     let resolver = Resolver::new(&ctx, &defined_names, deps);
-        //                     for decl in file.decls {
-        //                         match decl.try_map(|val| resolver.resolve(val)) {
-        //                             Ok(decl) => {
-        //                                 let result = decls.insert(decl.value.name(), decl);
-        //                                 if result.is_some() {
-        //                                     panic!("did not correctly check for duplicates");
-        //                                 }
-        //                             }
-        //                             Err(err) => errors.push(err),
-        //                         };
-        //                     }
-        //                 }
-        //             }
 
         Ok(Library {
             attributes,
             name,
-            term_scope,
-            type_scope,
+            terms,
+            types,
+            protocols,
+            services,
         })
     }
 
@@ -63,24 +75,85 @@ impl Library {
     // }
 }
 
-// pub struct Resolver<'a> {
-//     pub import_cx: &'a ImportContext,
-//     pub local_names: &'a HashMap<String, Span>,
-//     pub dep_names: &'a Dependencies,
-// }
+pub struct Resolver<'a> {
+    pub imports: &'a FileImports,
+    pub local_names: &'a UnresolvedScope,
+    pub imported_names: &'a Dependencies,
+}
 
-// impl<'a> Resolver<'a> {
-//     pub fn new(
-//         import_cx: &'a ImportContext,
-//         local_names: &'a HashMap<String, Span>,
-//         dep_names: &'a Dependencies,
-//     ) -> Self {
-//         Resolver {
-//             import_cx,
-//             local_names,
-//             dep_names,
-//         }
-//     }
+impl<'a> Resolver<'a> {
+    pub fn new(
+        imports: &'a FileImports,
+        local_names: &'a UnresolvedScope,
+        imported_names: &'a Dependencies,
+    ) -> Self {
+        Resolver {
+            imports,
+            local_names,
+            imported_names,
+        }
+    }
+
+    fn resolve_term(&self, term: Spanned<raw::Term>) -> Term {
+        match term.value {
+            raw::Term::Identifier(name) => Term::Identifier(self.resolve_name(name)),
+            // TODO: make literal inline in Term, so that raw and flat are the
+            // same?
+            _ => unimplemented!(),
+        }
+    }
+
+    fn resolve_type(&self, ty: Spanned<Box<raw::Type>>) -> Type {
+        // the type that is being aliased
+        let target_name = self.resolve_name(ty.value.name);
+        let inner = if ty.value.layout.is_some() || ty.value.constraint.is_some() {
+            Type::TypeSubstitution(TypeSubstitution {
+                func: Box::new(Type::Identifier(target_name)),
+                layout: unimplemented!(),
+                constraint: unimplemented!(),
+                // layout: ty.value.layout.map(|layout| self.resolve_type(layout)),
+                // constraint: ty.value.constraint.map(|constraint| self.resolve_term(constraint)),
+            })
+        } else {
+            Type::Identifier(target_name)
+        };
+        if ty.value.nullable {
+            Type::Ptr(Box::new(inner))
+        } else {
+            inner
+        }
+    }
+
+    // fn resolve_name(&self, name: raw::CompoundIdentifier) -> Result<Name, Error> {
+    fn resolve_name(&self, name: raw::CompoundIdentifier) -> Name {
+        unimplemented!()
+        // let span = name.span;
+        // let name = name.value;
+        // match name.len() {
+        //     1 => {
+        //         // this must be referring to something in the local context
+        //         let name = name.into_iter().next().unwrap();
+        //         if self.local_names.contains_key(&name) {
+        //             Ok(Name {
+        //                 library: None,
+        //                 name,
+        //                 member: None,
+        //             })
+        //         } else {
+        //             Err(Error::UnresolvedLocal(span))
+        //         }
+        //     }
+        //     2 => {
+        //         // if there are two components a.b, this can refer to two things:
+        //         // decl b in library a, or member b of decl a in the local library.
+        //         // TODO: the local names will need to keep track of existing member
+        //         // names too...
+        //         unimplemented!()
+        //     }
+        //     _ => unimplemented!(),
+        // }
+    }
+}
 
 //     // This should really return an Either - the Error is just stored somewhere and doesn't
 //     // actually indicate a failure. Also note that this return type means that only the
@@ -339,33 +412,6 @@ impl Library {
 //         unimplemented!()
 //     }
 
-//     fn resolve_name(&self, name: raw::CompoundIdentifier) -> Result<Name, Error> {
-//         let span = name.span;
-//         let name = name.value;
-//         match name.len() {
-//             1 => {
-//                 // this must be referring to something in the local context
-//                 let name = name.into_iter().next().unwrap();
-//                 if self.local_names.contains_key(&name) {
-//                     Ok(Name {
-//                         library: None,
-//                         name,
-//                         member: None,
-//                     })
-//                 } else {
-//                     Err(Error::UnresolvedLocal(span))
-//                 }
-//             }
-//             2 => {
-//                 // if there are two components a.b, this can refer to two things:
-//                 // decl b in library a, or member b of decl a in the local library.
-//                 // TODO: the local names will need to keep track of existing member
-//                 // names too...
-//                 unimplemented!()
-//             }
-//             _ => unimplemented!(),
-//         }
-//     }
 // }
 
 // TODO: this will be its own module once it's fleshed out some more
