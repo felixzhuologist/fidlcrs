@@ -21,14 +21,14 @@ fn dummy_span<T>(value: T) -> Spanned<T> {
 }
 
 impl raw::Alias {
-    pub fn resolve(self, resolver: &Resolver) -> Result<(String, TypeEntry), Error> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<(String, TypeEntry), Error> {
         let ty = resolver.resolve_type(self.ty)?;
         Ok((self.name.value, (self.attributes, ty)))
     }
 }
 
 impl raw::Const {
-    pub fn resolve(self, resolver: &Resolver) -> Result<(String, TermEntry), Vec<Error>> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<(String, TermEntry), Vec<Error>> {
         let ty = resolver.resolve_type(self.ty);
         let term = resolver.resolve_term(self.value);
 
@@ -55,7 +55,7 @@ impl raw::Const {
 // using the current pattern of doing if let and appending to a Vec of Errors
 
 impl raw::Struct {
-    pub fn resolve(self, resolver: &Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
         let mut members = Vec::new();
         let mut errors = Vec::new();
         for spanned in self.members {
@@ -74,7 +74,7 @@ impl raw::Struct {
 }
 
 impl raw::StructMember {
-    pub fn resolve(self, resolver: &Resolver) -> Result<StructMember, Vec<Error>> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<StructMember, Vec<Error>> {
         let ty = resolver.resolve_type_boxed(self.ty);
         let default_value = self
             .default_value
@@ -103,7 +103,7 @@ impl raw::StructMember {
 }
 
 impl raw::Bits {
-    pub fn resolve(self, resolver: &Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
         let mut errors = Vec::new();
 
         let ty = self.ty.map(|t| resolver.resolve_type_boxed(t)).transpose();
@@ -133,7 +133,7 @@ impl raw::Bits {
 }
 
 impl raw::BitsMember {
-    pub fn resolve(self, resolver: &Resolver) -> Result<BitsMember, Error> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<BitsMember, Error> {
         Ok(BitsMember {
             attributes: self.attributes,
             name: self.name,
@@ -143,7 +143,7 @@ impl raw::BitsMember {
 }
 
 impl raw::Enum {
-    pub fn resolve(self, resolver: &Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
         let mut errors = Vec::new();
 
         let ty = self.ty.map(|t| resolver.resolve_type_boxed(t)).transpose();
@@ -173,7 +173,7 @@ impl raw::Enum {
 }
 
 impl raw::EnumMember {
-    pub fn resolve(self, resolver: &Resolver) -> Result<EnumMember, Error> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<EnumMember, Error> {
         Ok(EnumMember {
             attributes: self.attributes,
             name: self.name,
@@ -183,7 +183,7 @@ impl raw::EnumMember {
 }
 
 impl raw::Table {
-    pub fn resolve(self, resolver: &Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
         let mut members = Vec::new();
         let mut errors = Vec::new();
         for spanned in self.members {
@@ -206,7 +206,7 @@ impl raw::Table {
 }
 
 impl raw::TableMember {
-    pub fn resolve(self, resolver: &Resolver) -> Result<TableMember, Vec<Error>> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<TableMember, Vec<Error>> {
         Ok(TableMember {
             attributes: self.attributes,
             ordinal: self.ordinal,
@@ -216,7 +216,7 @@ impl raw::TableMember {
 }
 
 impl raw::TableMemberInner {
-    pub fn resolve(self, resolver: &Resolver) -> Result<TableMemberInner, Vec<Error>> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<TableMemberInner, Vec<Error>> {
         match self {
             raw::TableMemberInner::Reserved => Ok(TableMemberInner::Reserved),
             raw::TableMemberInner::Used {
@@ -248,7 +248,7 @@ impl raw::TableMemberInner {
 }
 
 impl raw::Union {
-    pub fn resolve(self, resolver: &Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
         let mut members = Vec::new();
         let mut errors = Vec::new();
         for spanned in self.members {
@@ -271,7 +271,7 @@ impl raw::Union {
 }
 
 impl raw::UnionMember {
-    pub fn resolve(self, resolver: &Resolver) -> Result<UnionMember, Error> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<UnionMember, Error> {
         Ok(UnionMember {
             attributes: self.attributes,
             ordinal: self.ordinal,
@@ -281,7 +281,7 @@ impl raw::UnionMember {
 }
 
 impl raw::UnionMemberInner {
-    pub fn resolve(self, resolver: &Resolver) -> Result<UnionMemberInner, Error> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<UnionMemberInner, Error> {
         match self {
             raw::UnionMemberInner::Reserved => Ok(UnionMemberInner::Reserved),
             raw::UnionMemberInner::Used { ty, name } => Ok(UnionMemberInner::Used {
@@ -293,7 +293,7 @@ impl raw::UnionMemberInner {
 }
 
 impl raw::Protocol {
-    pub fn resolve(self, resolver: &Resolver) -> Result<(String, Protocol), Vec<Error>> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<(String, Protocol), Vec<Error>> {
         let mut errors = Vec::new();
 
         let mut methods = Vec::new();
@@ -325,7 +325,7 @@ impl raw::Protocol {
 }
 
 impl raw::Method {
-    pub fn resolve(self, resolver: &Resolver) -> Result<Method, Vec<Error>> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<Method, Vec<Error>> {
         let request = self
             .request
             .map(|params| resolve_params(params, resolver))
@@ -365,7 +365,7 @@ impl raw::Method {
 
 pub fn resolve_params(
     params: Vec<Spanned<raw::Parameter>>,
-    resolver: &Resolver,
+    resolver: &mut Resolver,
 ) -> Result<Vec<Spanned<Parameter>>, Vec<Error>> {
     let mut out = Vec::new();
     let mut errors = Vec::new();
@@ -383,7 +383,7 @@ pub fn resolve_params(
 }
 
 impl raw::Parameter {
-    pub fn resolve(self, resolver: &Resolver) -> Result<Parameter, Error> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<Parameter, Error> {
         Ok(Parameter {
             attributes: self.attributes,
             name: self.name,
@@ -393,7 +393,7 @@ impl raw::Parameter {
 }
 
 impl raw::Service {
-    pub fn resolve(self, resolver: &Resolver) -> Result<(String, Service), Vec<Error>> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<(String, Service), Vec<Error>> {
         let mut members = Vec::new();
         let mut errors = Vec::new();
         for spanned in self.members {
@@ -415,7 +415,7 @@ impl raw::Service {
 }
 
 impl raw::ServiceMember {
-    pub fn resolve(self, resolver: &Resolver) -> Result<ServiceMember, Error> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<ServiceMember, Error> {
         Ok(ServiceMember {
             attributes: self.attributes,
             protocol: resolver.resolve_name(self.protocol)?,
