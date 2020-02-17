@@ -407,39 +407,39 @@ pub fn resolve<T: Namespace>(term: &Term, scope: &T) -> Result<Term, Name> {
 // const uint8 y = x;
 // const uint32 z = y;
 // kindchecking is handled in this way.
-pub fn typecheck<T: Namespace>(term: &Term, scope: &T) -> Result<Type, ()> {
-    match term {
-        Term::Identifier(_) => {
-            let resolved = resolve(term, scope).map_err(|_| ())?;
-            // this comes from the scope
-            let expected_ty = unimplemented!();
-            match (resolved, &expected_ty) {
-                // TODO: check bounds. to do this, we need to kind check and
-                // type eval the bounds
-                (Term::Str(_), Type::Str(_bounds)) => Ok(expected_ty),
-                (Term::Int(val), Type::Int8) => i8::try_from(val).map(|_| expected_ty),
-                (Term::Int(val), Type::Int16) => i16::try_from(val).map(|_| expected_ty),
-                (Term::Int(val), Type::Int32) => i32::try_from(val).map(|_| expected_ty),
-                (Term::Int(val), Type::Int64) => i64::try_from(val).map(|_| expected_ty),
-                (Term::Int(val), Type::UInt8) => u8::try_from(val).map(|_| expected_ty),
-                (Term::Int(val), Type::UInt16) => u16::try_from(val).map(|_| expected_ty),
-                (Term::Int(val), Type::UInt32) => u32::try_from(val).map(|_| expected_ty),
-                (Term::Int(val), Type::UInt64) => u64::try_from(val).map(|_| expected_ty),
-                (Term::Float(_), Type::Float32)
-                | (Term::Float(_), Type::Float64)
-                | (Term::True, Type::Bool)
-                | (Term::False, Type::Bool) => Ok(Type::Bool),
-                (_, Type::Int) => panic!("users can't specify untyped Ints"),
-                (Term::Identifier(_), _) => panic!("should be fully resolved"),
-                _ => Err(()),
-            }
-        }
-        Term::Str(_) => Ok(Type::Str(Str { bounds: None })),
-        Term::Int(_) => Ok(Type::Int),
-        Term::Float(_) => Ok(Type::Float64),
-        Term::True | Term::False => Ok(Type::Bool),
-    }
-}
+// pub fn typecheck<T: Namespace>(term: &Term, scope: &T) -> Result<Type, ()> {
+//     match term {
+//         Term::Identifier(_) => {
+//             let resolved = resolve(term, scope).map_err(|_| ())?;
+//             // this comes from the scope
+//             let expected_ty = unimplemented!();
+//             match (resolved, &expected_ty) {
+//                 // TODO: check bounds. to do this, we need to kind check and
+//                 // type eval the bounds
+//                 (Term::Str(_), Type::Str(_bounds)) => Ok(expected_ty),
+//                 (Term::Int(val), Type::Int8) => i8::try_from(val).map(|_| expected_ty),
+//                 (Term::Int(val), Type::Int16) => i16::try_from(val).map(|_| expected_ty),
+//                 (Term::Int(val), Type::Int32) => i32::try_from(val).map(|_| expected_ty),
+//                 (Term::Int(val), Type::Int64) => i64::try_from(val).map(|_| expected_ty),
+//                 (Term::Int(val), Type::UInt8) => u8::try_from(val).map(|_| expected_ty),
+//                 (Term::Int(val), Type::UInt16) => u16::try_from(val).map(|_| expected_ty),
+//                 (Term::Int(val), Type::UInt32) => u32::try_from(val).map(|_| expected_ty),
+//                 (Term::Int(val), Type::UInt64) => u64::try_from(val).map(|_| expected_ty),
+//                 (Term::Float(_), Type::Float32)
+//                 | (Term::Float(_), Type::Float64)
+//                 | (Term::True, Type::Bool)
+//                 | (Term::False, Type::Bool) => Ok(Type::Bool),
+//                 (_, Type::Int) => panic!("users can't specify untyped Ints"),
+//                 (Term::Identifier(_), _) => panic!("should be fully resolved"),
+//                 _ => Err(()),
+//             }
+//         }
+//         Term::Str(_) => Ok(Type::Str(Str { bounds: None })),
+//         Term::Int(_) => Ok(Type::Int),
+//         Term::Float(_) => Ok(Type::Float64),
+//         Term::True | Term::False => Ok(Type::Bool),
+//     }
+// }
 
 // TODO: make evalable a trait? or move this to a method?
 // TODO: do we fuly evaluate the terms as well?
