@@ -123,7 +123,6 @@ pub struct BitsMember {
 pub struct Enum {
     pub strictness: Option<Spanned<Strictness>>,
     pub ty: Option<Spanned<Box<Type>>>,
-    pub name: Spanned<String>,
     pub members: Vec<Spanned<EnumMember>>,
 }
 
@@ -174,7 +173,6 @@ pub enum TableMemberInner {
 #[derive(Debug, Clone)]
 pub struct Union {
     pub strictness: Option<Spanned<Strictness>>,
-    pub name: Spanned<String>,
     pub members: Vec<Spanned<UnionMember>>,
 }
 

@@ -142,6 +142,46 @@ impl raw::BitsMember {
     }
 }
 
+impl raw::Enum {
+    pub fn resolve(self, resolver: &Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
+        let mut errors = Vec::new();
+
+        let ty = self.ty.map(|t| resolver.resolve_type_boxed(t)).transpose();
+        if let Err(err) = &ty {
+            errors.push(err.clone());
+        }
+
+        let mut members = Vec::new();
+        for spanned in self.members {
+            match spanned.try_map(|member| member.resolve(resolver)) {
+                Ok(member) => members.push(member),
+                Err(err) => errors.push(err),
+            };
+        }
+
+        if errors.is_empty() {
+            let num = Type::Enum(Enum {
+                strictness: self.strictness,
+                ty: ty.unwrap(),
+                members,
+            });
+            Ok((self.name.value, (self.attributes, dummy_span(num))))
+        } else {
+            Err(errors)
+        }
+    }
+}
+
+impl raw::EnumMember {
+    pub fn resolve(self, resolver: &Resolver) -> Result<EnumMember, Error> {
+        Ok(EnumMember {
+            attributes: self.attributes,
+            name: self.name,
+            value: resolver.resolve_term(self.value)?,
+        })
+    }
+}
+
 impl raw::Table {
     pub fn resolve(self, resolver: &Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
         let mut members = Vec::new();
@@ -203,6 +243,51 @@ impl raw::TableMemberInner {
                     })
                 }
             }
+        }
+    }
+}
+
+impl raw::Union {
+    pub fn resolve(self, resolver: &Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
+        let mut members = Vec::new();
+        let mut errors = Vec::new();
+        for spanned in self.members {
+            match spanned.try_map(|member| member.resolve(resolver)) {
+                Ok(member) => members.push(member),
+                Err(err) => errors.push(err),
+            }
+        }
+
+        if errors.is_empty() {
+            let union = Type::Union(Union {
+                strictness: self.strictness,
+                members,
+            });
+            Ok((self.name.value, (self.attributes, dummy_span(union))))
+        } else {
+            Err(errors)
+        }
+    }
+}
+
+impl raw::UnionMember {
+    pub fn resolve(self, resolver: &Resolver) -> Result<UnionMember, Error> {
+        Ok(UnionMember {
+            attributes: self.attributes,
+            ordinal: self.ordinal,
+            inner: self.inner.resolve(resolver)?,
+        })
+    }
+}
+
+impl raw::UnionMemberInner {
+    pub fn resolve(self, resolver: &Resolver) -> Result<UnionMemberInner, Error> {
+        match self {
+            raw::UnionMemberInner::Reserved => Ok(UnionMemberInner::Reserved),
+            raw::UnionMemberInner::Used { ty, name } => Ok(UnionMemberInner::Used {
+                ty: resolver.resolve_type_boxed(ty)?,
+                name,
+            }),
         }
     }
 }

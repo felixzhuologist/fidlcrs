@@ -47,12 +47,18 @@ impl Library {
                         Ok((name, entry)) => drop(types.insert(name, decl.span.wrap(entry))),
                         Err(errs) => errors.extend(errs),
                     },
-                    raw::Decl::Enum(_) => unimplemented!(),
+                    raw::Decl::Enum(val) => match val.resolve(&resolver) {
+                        Ok((name, entry)) => drop(types.insert(name, decl.span.wrap(entry))),
+                        Err(errs) => errors.extend(errs),
+                    },
                     raw::Decl::Table(val) => match val.resolve(&resolver) {
                         Ok((name, entry)) => drop(types.insert(name, decl.span.wrap(entry))),
                         Err(errs) => errors.extend(errs),
                     },
-                    raw::Decl::Union(_) => unimplemented!(),
+                    raw::Decl::Union(val) => match val.resolve(&resolver) {
+                        Ok((name, entry)) => drop(types.insert(name, decl.span.wrap(entry))),
+                        Err(errs) => errors.extend(errs),
+                    },
                     raw::Decl::Protocol(val) => match val.resolve(&resolver) {
                         Ok((name, entry)) => drop(protocols.insert(name, decl.span.wrap(entry))),
                         Err(errs) => errors.extend(errs),
