@@ -14,7 +14,6 @@ use crate::raw::{
     Import,
     IntLiteral,
     LibraryName,
-    Literal,
     Method,
     Parameter,
     Protocol,
@@ -212,15 +211,11 @@ Nullable: bool = {
 
 Term: Term = {
     CompoundIdentifier => Term::Identifier(<>),
-    Spanned<Literal> => Term::Literal(<>),
-};
-
-Literal: Literal = {
-    string_literal => Literal::Str(<>),
-    IntLiteral => Literal::Int(<>),
-    float_literal => Literal::Float(<>),
-    "true" => Literal::True,
-    "false" => Literal::False,
+    string_literal => Term::Str(<>),
+    IntLiteral => Term::Int(<>),
+    float_literal => Term::Float(<>),
+    "true" => Term::True,
+    "false" => Term::False,
 };
 
 AttributeBlock: Attributes = {

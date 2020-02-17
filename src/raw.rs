@@ -215,11 +215,6 @@ pub struct Attribute {
 #[derive(Debug, Clone)]
 pub enum Term {
     Identifier(CompoundIdentifier),
-    Literal(Spanned<Literal>),
-}
-
-#[derive(Debug, Clone)]
-pub enum Literal {
     Str(String),
     Int(IntLiteral),
     Float(f64),

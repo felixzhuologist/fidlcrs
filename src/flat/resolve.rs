@@ -111,13 +111,13 @@ impl<'a> Resolver<'a> {
     }
 
     pub fn resolve_term(&self, spanned: Spanned<raw::Term>) -> Result<Spanned<Term>, Error> {
-        spanned.try_map(|term| {
-            match term {
-                raw::Term::Identifier(name) => Ok(Term::Identifier(self.resolve_name(name)?.value)),
-                // TODO: make literal inline in Term, so that raw and flat are the
-                // same?
-                _ => unimplemented!(),
-            }
+        spanned.try_map(|term| match term {
+            raw::Term::Identifier(name) => Ok(Term::Identifier(self.resolve_name(name)?.value)),
+            raw::Term::Str(s) => Ok(Term::Str(s)),
+            raw::Term::Int(n) => Ok(Term::Int(n)),
+            raw::Term::Float(n) => Ok(Term::Float(n)),
+            raw::Term::True => Ok(Term::True),
+            raw::Term::False => Ok(Term::False),
         })
     }
 
