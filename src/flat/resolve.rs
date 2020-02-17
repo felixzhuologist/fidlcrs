@@ -105,6 +105,11 @@ impl<'a> Resolver<'a> {
         }
     }
 
+    pub fn resolve_term_boxed(&self, sp: Spanned<raw::Term>) -> Result<Spanned<Box<Term>>, Error> {
+        self.resolve_term(sp)
+            .map(|spanned| spanned.map(|term| Box::new(term)))
+    }
+
     pub fn resolve_term(&self, spanned: Spanned<raw::Term>) -> Result<Spanned<Term>, Error> {
         spanned.try_map(|term| {
             match term {
@@ -131,10 +136,15 @@ impl<'a> Resolver<'a> {
             let inner = if ty.layout.is_some() || ty.constraint.is_some() {
                 Type::TypeSubstitution(TypeSubstitution {
                     func: Box::new(Type::Identifier(target_name)),
-                    layout: unimplemented!(),
-                    constraint: unimplemented!(),
-                    // layout: ty.layout.map(|layout| self.resolve_type(layout)),
-                    // constraint: ty.constraint.map(|constraint| self.resolve_term(constraint)),
+                    // TODO: allow return possibly both errors
+                    layout: ty
+                        .layout
+                        .map(|layout| self.resolve_type_boxed(layout))
+                        .transpose()?,
+                    constraint: ty
+                        .constraint
+                        .map(|constraint| self.resolve_term_boxed(constraint))
+                        .transpose()?,
                 })
             } else {
                 Type::Identifier(target_name)
