@@ -17,8 +17,8 @@ impl Library {
         } = lib_cx;
         let mut terms: TermScope = HashMap::new();
         let mut types: TypeScope = HashMap::new();
-        let mut protocols: HashMap<String, Protocol> = HashMap::new();
-        let mut services: HashMap<String, Service> = HashMap::new();
+        let mut protocols: HashMap<String, Spanned<Protocol>> = HashMap::new();
+        let mut services: HashMap<String, Spanned<Service>> = HashMap::new();
         let mut _errors: Vec<Error> = Vec::new();
         for file in files {
             // TODO: can we continue here? note that on import duplicates, currently the old one
@@ -31,31 +31,36 @@ impl Library {
             };
             for decl in file.decls {
                 match decl.value {
-                    raw::Decl::Alias(raw::Alias {
-                        attributes,
-                        name,
-                        ty,
-                    }) => {
-                        let resolved = resolver.resolve_type(ty);
-                        types.insert(name.value, (attributes, resolved));
+                    raw::Decl::Alias(val) => {
+                        let (name, entry) = val.resolve(&resolver);
+                        types.insert(name, decl.span.wrap(entry));
                     }
-                    raw::Decl::Const(raw::Const {
-                        attributes,
-                        ty,
-                        name,
-                        value,
-                    }) => {
-                        let ty = resolver.resolve_type(ty);
-                        let term = resolver.resolve_term(value);
-                        terms.insert(name.value, (attributes, ty, term));
+                    raw::Decl::Const(val) => {
+                        let (name, entry) = val.resolve(&resolver);
+                        terms.insert(name, decl.span.wrap(entry));
                     }
-                    raw::Decl::Struct(_) => unimplemented!(),
-                    raw::Decl::Bits(_) => unimplemented!(),
+                    raw::Decl::Struct(val) => {
+                        let (name, entry) = val.resolve(&resolver);
+                        types.insert(name, decl.span.wrap(entry));
+                    }
+                    raw::Decl::Bits(val) => {
+                        let (name, entry) = val.resolve(&resolver);
+                        types.insert(name, decl.span.wrap(entry));
+                    }
                     raw::Decl::Enum(_) => unimplemented!(),
-                    raw::Decl::Table(_) => unimplemented!(),
+                    raw::Decl::Table(val) => {
+                        let (name, entry) = val.resolve(&resolver);
+                        types.insert(name, decl.span.wrap(entry));
+                    }
                     raw::Decl::Union(_) => unimplemented!(),
-                    raw::Decl::Protocol(_) => unimplemented!(),
-                    raw::Decl::Service(_) => unimplemented!(),
+                    raw::Decl::Protocol(val) => {
+                        let (name, entry) = val.resolve(&resolver);
+                        protocols.insert(name, decl.span.wrap(entry));
+                    }
+                    raw::Decl::Service(val) => {
+                        let (name, entry) = val.resolve(&resolver);
+                        services.insert(name, decl.span.wrap(entry));
+                    }
                 }
             }
         }
@@ -94,38 +99,46 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn resolve_term(&self, term: Spanned<raw::Term>) -> Term {
-        match term.value {
-            raw::Term::Identifier(name) => Term::Identifier(self.resolve_name(name)),
-            // TODO: make literal inline in Term, so that raw and flat are the
-            // same?
-            _ => unimplemented!(),
-        }
+    pub fn resolve_term(&self, spanned: Spanned<raw::Term>) -> Spanned<Term> {
+        spanned.map(|term| {
+            match term {
+                raw::Term::Identifier(name) => Term::Identifier(self.resolve_name(name).value),
+                // TODO: make literal inline in Term, so that raw and flat are the
+                // same?
+                _ => unimplemented!(),
+            }
+        })
     }
 
-    fn resolve_type(&self, ty: Spanned<Box<raw::Type>>) -> Type {
-        // the type that is being aliased
-        let target_name = self.resolve_name(ty.value.name);
-        let inner = if ty.value.layout.is_some() || ty.value.constraint.is_some() {
-            Type::TypeSubstitution(TypeSubstitution {
-                func: Box::new(Type::Identifier(target_name)),
-                layout: unimplemented!(),
-                constraint: unimplemented!(),
-                // layout: ty.value.layout.map(|layout| self.resolve_type(layout)),
-                // constraint: ty.value.constraint.map(|constraint| self.resolve_term(constraint)),
-            })
-        } else {
-            Type::Identifier(target_name)
-        };
-        if ty.value.nullable {
-            Type::Ptr(Box::new(inner))
-        } else {
-            inner
-        }
+    pub fn resolve_type_boxed(&self, spanned: Spanned<Box<raw::Type>>) -> Spanned<Box<Type>> {
+        self.resolve_type(spanned).map(|ty| Box::new(ty))
+    }
+
+    pub fn resolve_type(&self, spanned: Spanned<Box<raw::Type>>) -> Spanned<Type> {
+        spanned.map(|ty| {
+            // the type that is being aliased
+            let target_name = self.resolve_name(ty.name).value;
+            let inner = if ty.layout.is_some() || ty.constraint.is_some() {
+                Type::TypeSubstitution(TypeSubstitution {
+                    func: Box::new(Type::Identifier(target_name)),
+                    layout: unimplemented!(),
+                    constraint: unimplemented!(),
+                    // layout: ty.layout.map(|layout| self.resolve_type(layout)),
+                    // constraint: ty.constraint.map(|constraint| self.resolve_term(constraint)),
+                })
+            } else {
+                Type::Identifier(target_name)
+            };
+            if ty.nullable {
+                Type::Ptr(Box::new(inner))
+            } else {
+                inner
+            }
+        })
     }
 
     // fn resolve_name(&self, name: raw::CompoundIdentifier) -> Result<Name, Error> {
-    fn resolve_name(&self, name: raw::CompoundIdentifier) -> Name {
+    pub fn resolve_name(&self, _name: raw::CompoundIdentifier) -> Spanned<Name> {
         unimplemented!()
         // let span = name.span;
         // let name = name.value;
@@ -443,6 +456,9 @@ pub struct FileImports {
     imports: HashMap<String, Option<String>>,
 }
 
+// TODO: check that imports are in deps, and keep track of which imports are used.
+// would be better to do this once we have a better idea of what Depedencies looks
+// like.
 impl FileImports {
     // NOTE: this only takes in raw:: data, so technically this can be done during the File
     // "validation" step as well. but conceptually it belongs here and this at least avoids some

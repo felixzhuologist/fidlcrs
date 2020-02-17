@@ -6,6 +6,7 @@ use std::fmt;
 
 pub mod errors;
 pub mod resolve;
+pub mod visitor;
 
 // we can't place the attributes directly into the term/type, because
 // it's associated with the _declaration_ of that value, and not its usage
@@ -14,17 +15,29 @@ pub mod resolve;
 // [Foo = "bar"] const uint8 x = 3;
 //
 // it doesn't make sense to associate the attributes with the rhs (3), rather
-// it needs to be stored alongside the scope entry for x.
+// it needs to be stored alongside the scope entry for x. as another example, in
 //
+// [Foo] using Foo = Bar<Baz>:Qux;
+//
+// the rhs is a Type::FunctionApplication. It wouldn't make sense to have an
+// attributes on this variant, because it wouldn't exist in the context of e.g.
+//
+// struct Foo {
+//   Bar<Baz>:Qux foo;
+// }
+//
+// so we need to store the attributes alongside the entry and not the type itself.
 // we get away with storing attributes inline on protocols and services
-// because they can never be used in an rhs expression. for the term scope,
-// each entry has a Type, which is the user specificed type ascription for that
-// entry (this can't be inline on Term for the same reason as attributes).
+// because they can never be used in an rhs expression.
 //
 // note that this means that if we ever modelled builtins as a scope, each entry
 // would need to explicitly specify no attributes (e.g. for uint8)
-pub type TypeScope = HashMap<String, (Attributes, Type)>;
-pub type TermScope = HashMap<String, (Attributes, Type, Term)>;
+
+pub type TypeEntry = (Attributes, Spanned<Type>);
+pub type TermEntry = (Attributes, Spanned<Type>, Spanned<Term>);
+
+pub type TypeScope = HashMap<String, Spanned<TypeEntry>>;
+pub type TermScope = HashMap<String, Spanned<TermEntry>>;
 
 // TODO: should this be in resolve instead?
 pub struct Library {
@@ -33,8 +46,8 @@ pub struct Library {
 
     pub terms: TermScope,
     pub types: TypeScope,
-    pub protocols: HashMap<String, Protocol>,
-    pub services: HashMap<String, Service>,
+    pub protocols: HashMap<String, Spanned<Protocol>>,
+    pub services: HashMap<String, Spanned<Service>>,
 }
 
 #[derive(Debug, Clone)]
@@ -92,12 +105,10 @@ pub enum Type {
     Int,
 }
 
-// TODO: these types don't need to have names on them, remove?
 #[derive(Debug, Clone)]
 pub struct Bits {
     pub strictness: Option<Spanned<Strictness>>,
     pub ty: Option<Spanned<Box<Type>>>,
-    pub name: Spanned<String>,
     pub members: Vec<Spanned<BitsMember>>,
 }
 
@@ -125,13 +136,12 @@ pub struct EnumMember {
 
 #[derive(Debug, Clone)]
 pub struct Struct {
-    pub attributes: Attributes,
-    pub name: Spanned<String>,
     pub members: Vec<Spanned<StructMember>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct StructMember {
+    pub attributes: Attributes,
     pub ty: Spanned<Box<Type>>,
     pub name: Spanned<String>,
     pub default_value: Option<Spanned<Term>>,
@@ -140,7 +150,6 @@ pub struct StructMember {
 #[derive(Debug, Clone)]
 pub struct Table {
     pub strictness: Option<Spanned<Strictness>>,
-    pub name: Spanned<String>,
     pub members: Vec<Spanned<TableMember>>,
 }
 
@@ -188,9 +197,8 @@ pub enum UnionMemberInner {
 #[derive(Debug, Clone)]
 pub struct Protocol {
     pub attributes: Attributes,
-    pub name: Spanned<String>,
     pub methods: Vec<Spanned<Method>>,
-    pub compose: Vec<Name>,
+    pub compose: Vec<Spanned<Name>>,
 }
 
 #[derive(Debug, Clone)]
@@ -212,14 +220,13 @@ pub struct Parameter {
 #[derive(Debug, Clone)]
 pub struct Service {
     pub attributes: Attributes,
-    pub name: Spanned<String>,
     pub members: Vec<Spanned<ServiceMember>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ServiceMember {
     pub attributes: Attributes,
-    pub protocol: Name,
+    pub protocol: Spanned<Name>,
     pub name: Spanned<String>,
 }
 

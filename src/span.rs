@@ -33,6 +33,12 @@ pub struct Span<Pos> {
     pub end: Pos,
 }
 
+impl<Pos> Span<Pos> {
+    pub fn wrap<T>(self, value: T) -> Spanned<T, Pos> {
+        Spanned { value, span: self }
+    }
+}
+
 impl<Pos> PartialEq for Span<Pos>
 where
     Pos: PartialEq,
@@ -41,42 +47,6 @@ where
         self.start == other.start && self.end == other.end && self.file == other.file
     }
 }
-
-// TODO: can we remove this?
-// impl<Pos> PartialOrd for Span<Pos>
-// where
-//     Pos: PartialOrd,
-// {
-//     fn partial_cmp(&self, other: &Span<Pos>) -> Option<Ordering> {
-//         self.file.partial_cmp(&other.file).and_then(|ord| {
-//             if ord == Ordering::Equal {
-//                 self.start.partial_cmp(&other.start).and_then(|ord| {
-//                     if ord == Ordering::Equal {
-//                         self.end.partial_cmp(&self.end)
-//                     } else {
-//                         Some(ord)
-//                     }
-//                 })
-//             } else {
-//                 Some(ord)
-//             }
-//         })
-//     }
-// }
-
-// impl<Pos> Ord for Span<Pos>
-// where
-//     Pos: Ord,
-// {
-//     fn cmp(&self, other: &Span<Pos>) -> Ordering {
-//         let ord = self.start.cmp(&other.start);
-//         if ord == Ordering::Equal {
-//             self.end.cmp(&self.end)
-//         } else {
-//             ord
-//         }
-//     }
-// }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Spanned<T, Pos> {
