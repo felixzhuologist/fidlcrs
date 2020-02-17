@@ -1,6 +1,6 @@
 use super::errors::Error;
 use super::*;
-use crate::flatten::{ResolverContext, UnresolvedScope, get_nested_def};
+use crate::flatten::{get_nested_def, ResolverContext, UnresolvedScope};
 use crate::lexer::Span;
 use crate::raw;
 // use crate::raw::Spanned;
@@ -81,8 +81,21 @@ impl Library {
         })
     }
 
-    pub fn lookup(&self, _name: &String) -> Option<Span> {
-        unimplemented!()
+    pub fn lookup(&self, name: &String) -> Option<Span> {
+        // NOTE: Flattener ensures that each of these scopes are mutually exclusive
+        if let Some(entry) = self.terms.get(name) {
+            return Some(entry.span);
+        }
+        if let Some(entry) = self.types.get(name) {
+            return Some(entry.span);
+        }
+        if let Some(entry) = self.protocols.get(name) {
+            return Some(entry.span);
+        }
+        if let Some(entry) = self.services.get(name) {
+            return Some(entry.span);
+        }
+        return None;
     }
 }
 
@@ -182,33 +195,40 @@ impl<'a> Resolver<'a> {
                     let var = name.first().unwrap();
                     let member = name.last().unwrap();
                     match get_nested_def(self.local_names, var, member) {
-                        Some(span) => Some((span, Name{
-                            library: None,
-                            name: var.clone(),
-                            member: Some(member.clone()),
-                        })),
-                        _ => None
+                        Some(span) => Some((
+                            span,
+                            Name {
+                                library: None,
+                                name: var.clone(),
+                                member: Some(member.clone()),
+                            },
+                        )),
+                        _ => None,
                     }
                 };
                 let dep_value = {
                     let lib_name = name.first().unwrap();
                     let var = name.last().unwrap();
                     match self.deps.lookup(lib_name, var) {
-                        Some(span) => Some((span, Name {
-                            library: Some(lib_name.clone()),
-                            name: var.clone(),
-                            member: None,
-                        })),
-                        _ => None
+                        Some(span) => Some((
+                            span,
+                            Name {
+                                library: Some(lib_name.clone()),
+                                name: var.clone(),
+                                member: None,
+                            },
+                        )),
+                        _ => None,
                     }
                 };
                 match (local_value, dep_value) {
-                    (Some((local_span, local_name)), Some((dep_span, dep_name))) =>
+                    (Some((local_span, local_name)), Some((dep_span, dep_name))) => {
                         Err(Error::AmbiguousReference {
                             span,
                             interp1: local_span.wrap(local_name),
-                            interp2: dep_span.wrap(dep_name)
-                        }),
+                            interp2: dep_span.wrap(dep_name),
+                        })
+                    }
                     (Some((_, local_name)), None) => Ok(span.wrap(local_name)),
                     (None, Some((_, dep_name))) => Ok(span.wrap(dep_name)),
                     (None, None) => Err(Error::Undefined(span)),
@@ -231,9 +251,7 @@ impl Dependencies {
     }
 
     fn lookup(&self, lib_name: &String, var: &String) -> Option<Span> {
-        self.libraries
-            .get(lib_name)
-            .and_then(|lib| lib.lookup(var))
+        self.libraries.get(lib_name).and_then(|lib| lib.lookup(var))
     }
 }
 

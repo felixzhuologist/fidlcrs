@@ -1,7 +1,7 @@
+use super::Name;
 use crate::lexer::Span;
 use crate::raw::Spanned;
 use crate::source_file::FileMap;
-use super::Name;
 use annotate_snippets::snippet::Snippet;
 // use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 
@@ -25,7 +25,7 @@ pub enum Error {
         span: Span,
         interp1: Spanned<Name>,
         interp2: Spanned<Name>,
-    }
+    },
 }
 
 impl Error {

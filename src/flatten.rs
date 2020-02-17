@@ -20,7 +20,10 @@ pub struct NameDef {
 
 pub fn get_nested_def(scope: &UnresolvedScope, name: &String, member: &String) -> Option<Span> {
     match scope.get(name) {
-        Some(NameDef { span: _, inner_scope: Some(scope) }) => match scope.get(member) {
+        Some(NameDef {
+            span: _,
+            inner_scope: Some(scope),
+        }) => match scope.get(member) {
             Some(span) => Some(*span),
             _ => None,
         },
