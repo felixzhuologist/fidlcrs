@@ -97,6 +97,21 @@ impl Library {
         }
         return None;
     }
+
+    pub fn lookup_nested(&self, name: &String, member: &String) -> Option<Span> {
+        match self.types.get(name) {
+            Some(entry) => {
+                if let Type::Bits(bits) = &entry.value.1.value {
+                    return bits.lookup(member);
+                }
+                if let Type::Enum(num) = &entry.value.1.value {
+                    return num.lookup(member);
+                }
+                return None;
+            }
+            None => return None,
+        }
+    }
 }
 
 pub struct Resolver<'a> {
@@ -180,6 +195,7 @@ impl<'a> Resolver<'a> {
         let span = name.span;
         let name = name.value;
         match name.len() {
+            0 => panic!("cant have an empty name"),
             1 => {
                 // this must be referring to a top level value in the local context
                 let name = name.into_iter().next().unwrap();
@@ -215,7 +231,7 @@ impl<'a> Resolver<'a> {
                 let dep_value = {
                     let lib_name = name.first().unwrap();
                     let var = name.last().unwrap();
-                    match self.dep_lookup(lib_name, var) {
+                    match self.dep_lookup(lib_name, var, None) {
                         Some(span) => Some((
                             span,
                             Name {
@@ -240,22 +256,69 @@ impl<'a> Resolver<'a> {
                     (None, None) => Err(Error::Undefined(span)),
                 }
             }
-            _ => unimplemented!(),
+            _ => {
+                // if there are more than two components, this can't refer to a local value.
+                // it must either refer to a member or top level value in a dependency
+                let member_val = {
+                    let member = &name[name.len() - 1];
+                    let var = &name[name.len() - 2];
+                    let library = name[..name.len() - 2].join(".");
+                    match self.dep_lookup(&library, var, Some(member)) {
+                        Some(span) => Some((
+                            span,
+                            Name {
+                                library: Some(library),
+                                name: var.clone(),
+                                member: Some(member.clone()),
+                            },
+                        )),
+                        _ => None,
+                    }
+                };
+                let toplevel_val = {
+                    let var = &name[name.len() - 1];
+                    let library = name[..name.len() - 1].join(".");
+                    match self.dep_lookup(&library, &var, None) {
+                        Some(span) => Some((
+                            span,
+                            Name {
+                                library: Some(library),
+                                name: var.clone(),
+                                member: None,
+                            },
+                        )),
+                        _ => None,
+                    }
+                };
+                match (member_val, toplevel_val) {
+                    (Some((mspan, mname)), Some((tspan, tname))) => {
+                        Err(Error::AmbiguousReference {
+                            span,
+                            interp1: mspan.wrap(mname),
+                            interp2: tspan.wrap(tname),
+                        })
+                    }
+                    (Some((_, member_name)), None) => Ok(span.wrap(member_name)),
+                    (None, Some((_, toplevel_name))) => Ok(span.wrap(toplevel_name)),
+                    (None, None) => Err(Error::Undefined(span)),
+                }
+            }
         }
     }
 
     // any name lookup in the dependencies should go through these methods, so that
     // import usage can be tracked
-    fn dep_lookup(&mut self, lib_name: &String, var: &String) -> Option<Span> {
+    fn dep_lookup(
+        &mut self,
+        lib_name: &String,
+        var: &String,
+        member: Option<&String>,
+    ) -> Option<Span> {
         let lib_name = self.imports.get_absolute(lib_name);
         self.imports.mark_used(&lib_name);
 
-        self.deps.lookup(&lib_name, var)
+        self.deps.lookup(&lib_name, var, member)
     }
-
-    // fn dep_lookup_nested(&self, _lib_name: &String, _name: &String, _member: &String) -> Option<Span> {
-    //     unimplemented!()
-    // }
 }
 
 // TODO: this will be its own module once it's fleshed out some more
@@ -269,8 +332,11 @@ impl Dependencies {
         unimplemented!()
     }
 
-    fn lookup(&self, lib_name: &String, var: &String) -> Option<Span> {
-        self.libraries.get(lib_name).and_then(|lib| lib.lookup(var))
+    fn lookup(&self, lib_name: &String, var: &String, member: Option<&String>) -> Option<Span> {
+        self.libraries.get(lib_name).and_then(|lib| match member {
+            Some(member) => lib.lookup_nested(var, member),
+            None => lib.lookup(var),
+        })
     }
 }
 

@@ -1,3 +1,4 @@
+use crate::lexer::Span;
 use crate::raw::{Attributes, IntLiteral, Spanned, Strictness};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -112,6 +113,17 @@ pub struct Bits {
     pub members: Vec<Spanned<BitsMember>>,
 }
 
+impl Bits {
+    pub fn lookup(&self, member_name: &String) -> Option<Span> {
+        for member in &self.members {
+            if &member.value.name.value == member_name {
+                return Some(member.span);
+            }
+        }
+        return None;
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BitsMember {
     pub attributes: Attributes,
@@ -124,6 +136,17 @@ pub struct Enum {
     pub strictness: Option<Spanned<Strictness>>,
     pub ty: Option<Spanned<Box<Type>>>,
     pub members: Vec<Spanned<EnumMember>>,
+}
+
+impl Enum {
+    pub fn lookup(&self, member_name: &String) -> Option<Span> {
+        for member in &self.members {
+            if &member.value.name.value == member_name {
+                return Some(member.span);
+            }
+        }
+        return None;
+    }
 }
 
 #[derive(Debug, Clone)]
