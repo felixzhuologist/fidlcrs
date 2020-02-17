@@ -3,6 +3,7 @@ use crate::source_file::FileMap;
 use annotate_snippets::snippet::Snippet;
 // use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 
+#[derive(Debug, Clone)]
 pub enum Error {
     DuplicateImport {
         import: String,

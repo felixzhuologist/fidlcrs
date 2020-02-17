@@ -5,6 +5,7 @@
 //! key (i.e. name as a String) and value (i.e. for types, Attributes and Type,
 //! and for terms, Attributes, Term, and Type) that this decl would take inside
 //! the library's scope
+use super::errors::Error;
 use super::resolve::Resolver;
 use super::*;
 use crate::raw;
@@ -20,188 +21,320 @@ fn dummy_span<T>(value: T) -> Spanned<T> {
 }
 
 impl raw::Alias {
-    pub fn resolve(self, resolver: &Resolver) -> (String, TypeEntry) {
-        (
-            self.name.value,
-            (self.attributes, resolver.resolve_type(self.ty)),
-        )
+    pub fn resolve(self, resolver: &Resolver) -> Result<(String, TypeEntry), Error> {
+        let ty = resolver.resolve_type(self.ty)?;
+        Ok((self.name.value, (self.attributes, ty)))
     }
 }
 
 impl raw::Const {
-    pub fn resolve(self, resolver: &Resolver) -> (String, TermEntry) {
+    pub fn resolve(self, resolver: &Resolver) -> Result<(String, TermEntry), Vec<Error>> {
         let ty = resolver.resolve_type(self.ty);
         let term = resolver.resolve_term(self.value);
-        (self.name.value, (self.attributes, ty, term))
+
+        let mut errors = Vec::new();
+        if let Err(err) = &ty {
+            errors.push(err.clone());
+        }
+        if let Err(err) = &term {
+            errors.push(err.clone());
+        }
+
+        if errors.is_empty() {
+            Ok((
+                self.name.value,
+                (self.attributes, ty.unwrap(), term.unwrap()),
+            ))
+        } else {
+            Err(errors)
+        }
     }
 }
 
-// TODO: implement map over Vec<Spanned<T>>, once error handling is done
+// TODO: some copies are unecessary but are done to get around partial moves when
+// using the current pattern of doing if let and appending to a Vec of Errors
 
 impl raw::Struct {
-    pub fn resolve(self, resolver: &Resolver) -> (String, TypeEntry) {
+    pub fn resolve(self, resolver: &Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
         let mut members = Vec::new();
+        let mut errors = Vec::new();
         for spanned in self.members {
-            members.push(spanned.map(|member| member.resolve(resolver)));
+            match spanned.try_map(|member| member.resolve(resolver)) {
+                Ok(member) => members.push(member),
+                Err(errs) => errors.extend(errs),
+            };
         }
-        let ty = Type::Struct(Struct { members });
-        (self.name.value, (self.attributes, dummy_span(ty)))
+        if errors.is_empty() {
+            let ty = Type::Struct(Struct { members });
+            Ok((self.name.value, (self.attributes, dummy_span(ty))))
+        } else {
+            Err(errors)
+        }
     }
 }
 
 impl raw::StructMember {
-    pub fn resolve(self, resolver: &Resolver) -> StructMember {
+    pub fn resolve(self, resolver: &Resolver) -> Result<StructMember, Vec<Error>> {
         let ty = resolver.resolve_type_boxed(self.ty);
-        let default_value = self.default_value.map(|t| resolver.resolve_term(t));
-        StructMember {
-            attributes: self.attributes,
-            ty,
-            name: self.name,
-            default_value,
+        let default_value = self
+            .default_value
+            .map(|t| resolver.resolve_term(t))
+            .transpose();
+
+        let mut errors = Vec::new();
+        if let Err(err) = &ty {
+            errors.push(err.clone());
+        }
+        if let Err(err) = &default_value {
+            errors.push(err.clone());
+        }
+
+        if !errors.is_empty() {
+            Err(errors)
+        } else {
+            Ok(StructMember {
+                attributes: self.attributes,
+                ty: ty.unwrap(),
+                name: self.name,
+                default_value: default_value.unwrap(),
+            })
         }
     }
 }
 
 impl raw::Bits {
-    pub fn resolve(self, resolver: &Resolver) -> (String, TypeEntry) {
-        let ty = self.ty.map(|t| resolver.resolve_type_boxed(t));
+    pub fn resolve(self, resolver: &Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
+        let mut errors = Vec::new();
+
+        let ty = self.ty.map(|t| resolver.resolve_type_boxed(t)).transpose();
+        if let Err(err) = &ty {
+            errors.push(err.clone());
+        }
+
         let mut members = Vec::new();
         for spanned in self.members {
-            members.push(spanned.map(|member| member.resolve(resolver)));
+            match spanned.try_map(|member| member.resolve(resolver)) {
+                Ok(member) => members.push(member),
+                Err(err) => errors.push(err),
+            };
         }
-        let bits = Type::Bits(Bits {
-            strictness: self.strictness,
-            ty,
-            members,
-        });
-        (self.name.value, (self.attributes, dummy_span(bits)))
+
+        if errors.is_empty() {
+            let bits = Type::Bits(Bits {
+                strictness: self.strictness,
+                ty: ty.unwrap(),
+                members,
+            });
+            Ok((self.name.value, (self.attributes, dummy_span(bits))))
+        } else {
+            Err(errors)
+        }
     }
 }
 
 impl raw::BitsMember {
-    pub fn resolve(self, resolver: &Resolver) -> BitsMember {
-        BitsMember {
+    pub fn resolve(self, resolver: &Resolver) -> Result<BitsMember, Error> {
+        Ok(BitsMember {
             attributes: self.attributes,
             name: self.name,
-            value: resolver.resolve_term(self.value),
-        }
+            value: resolver.resolve_term(self.value)?,
+        })
     }
 }
 
 impl raw::Table {
-    pub fn resolve(self, resolver: &Resolver) -> (String, TypeEntry) {
+    pub fn resolve(self, resolver: &Resolver) -> Result<(String, TypeEntry), Vec<Error>> {
         let mut members = Vec::new();
+        let mut errors = Vec::new();
         for spanned in self.members {
-            members.push(spanned.map(|member| member.resolve(resolver)));
+            match spanned.try_map(|member| member.resolve(resolver)) {
+                Ok(member) => members.push(member),
+                Err(errs) => errors.extend(errs),
+            }
         }
-        let table = Type::Table(Table {
-            strictness: self.strictness,
-            members,
-        });
-        (self.name.value, (self.attributes, dummy_span(table)))
+
+        if errors.is_empty() {
+            let table = Type::Table(Table {
+                strictness: self.strictness,
+                members,
+            });
+            Ok((self.name.value, (self.attributes, dummy_span(table))))
+        } else {
+            Err(errors)
+        }
     }
 }
 
 impl raw::TableMember {
-    pub fn resolve(self, resolver: &Resolver) -> TableMember {
-        TableMember {
+    pub fn resolve(self, resolver: &Resolver) -> Result<TableMember, Vec<Error>> {
+        Ok(TableMember {
             attributes: self.attributes,
             ordinal: self.ordinal,
-            inner: self.inner.resolve(resolver),
-        }
+            inner: self.inner.resolve(resolver)?,
+        })
     }
 }
 
 impl raw::TableMemberInner {
-    pub fn resolve(self, resolver: &Resolver) -> TableMemberInner {
+    pub fn resolve(self, resolver: &Resolver) -> Result<TableMemberInner, Vec<Error>> {
         match self {
-            raw::TableMemberInner::Reserved => TableMemberInner::Reserved,
+            raw::TableMemberInner::Reserved => Ok(TableMemberInner::Reserved),
             raw::TableMemberInner::Used {
                 ty,
                 name,
                 default_value,
-            } => TableMemberInner::Used {
-                ty: resolver.resolve_type_boxed(ty),
-                name,
-                default_value: default_value.map(|t| resolver.resolve_term(t)),
-            },
+            } => {
+                let ty = resolver.resolve_type_boxed(ty);
+                let default_value = default_value.map(|t| resolver.resolve_term(t)).transpose();
+                let mut errors = Vec::new();
+                if let Err(err) = &ty {
+                    errors.push(err.clone());
+                }
+                if let Err(err) = &default_value {
+                    errors.push(err.clone());
+                }
+                if !errors.is_empty() {
+                    Err(errors)
+                } else {
+                    Ok(TableMemberInner::Used {
+                        ty: ty.unwrap(),
+                        name,
+                        default_value: default_value.unwrap(),
+                    })
+                }
+            }
         }
     }
 }
 
 impl raw::Protocol {
-    pub fn resolve(self, resolver: &Resolver) -> (String, Protocol) {
+    pub fn resolve(self, resolver: &Resolver) -> Result<(String, Protocol), Vec<Error>> {
+        let mut errors = Vec::new();
+
         let mut methods = Vec::new();
         for spanned in self.methods {
-            methods.push(spanned.map(|method| method.resolve(resolver)));
+            match spanned.try_map(|method| method.resolve(resolver)) {
+                Ok(method) => methods.push(method),
+                Err(errs) => errors.extend(errs),
+            }
         }
         let mut compose = Vec::new();
         for c in self.compose {
-            compose.push(resolver.resolve_name(c));
+            match resolver.resolve_name(c) {
+                Ok(c) => compose.push(c),
+                Err(errs) => errors.push(errs),
+            }
         }
-        let protocol = Protocol {
-            attributes: self.attributes,
-            methods,
-            compose,
-        };
-        (self.name.value, protocol)
+
+        if errors.is_empty() {
+            let protocol = Protocol {
+                attributes: self.attributes,
+                methods,
+                compose,
+            };
+            Ok((self.name.value, protocol))
+        } else {
+            Err(errors)
+        }
     }
 }
 
 impl raw::Method {
-    pub fn resolve(self, resolver: &Resolver) -> Method {
-        let request = self.request.map(|params| {
-            params
-                .into_iter()
-                .map(|sp| sp.map(|param| param.resolve(resolver)))
-                .collect::<Vec<_>>()
-        });
-        let response = self.response.map(|params| {
-            params
-                .into_iter()
-                .map(|sp| sp.map(|param| param.resolve(resolver)))
-                .collect::<Vec<_>>()
-        });
-        Method {
+    pub fn resolve(self, resolver: &Resolver) -> Result<Method, Vec<Error>> {
+        let request = self
+            .request
+            .map(|params| resolve_params(params, resolver))
+            .transpose();
+        let response = self
+            .response
+            .map(|params| resolve_params(params, resolver))
+            .transpose();
+        let error = self
+            .error
+            .map(|t| resolver.resolve_type_boxed(t))
+            .transpose();
+
+        let mut errors = Vec::new();
+        if let Err(errs) = &request {
+            errors.extend(errs.clone());
+        }
+        if let Err(errs) = &response {
+            errors.extend(errs.clone());
+        }
+        if let Err(err) = &error {
+            errors.push(err.clone());
+        }
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+
+        Ok(Method {
             attributes: self.attributes,
             name: self.name,
-            request,
-            response,
-            error: self.error.map(|t| resolver.resolve_type_boxed(t)),
-        }
+            request: request.unwrap(),
+            response: response.unwrap(),
+            error: error.unwrap(),
+        })
+    }
+}
+
+pub fn resolve_params(
+    params: Vec<Spanned<raw::Parameter>>,
+    resolver: &Resolver,
+) -> Result<Vec<Spanned<Parameter>>, Vec<Error>> {
+    let mut out = Vec::new();
+    let mut errors = Vec::new();
+    for spanned in params {
+        match spanned.try_map(|param| param.resolve(resolver)) {
+            Ok(param) => out.push(param),
+            Err(err) => errors.push(err),
+        };
+    }
+    if errors.is_empty() {
+        Ok(out)
+    } else {
+        Err(errors)
     }
 }
 
 impl raw::Parameter {
-    pub fn resolve(self, resolver: &Resolver) -> Parameter {
-        Parameter {
+    pub fn resolve(self, resolver: &Resolver) -> Result<Parameter, Error> {
+        Ok(Parameter {
             attributes: self.attributes,
             name: self.name,
-            ty: resolver.resolve_type_boxed(self.ty),
-        }
+            ty: resolver.resolve_type_boxed(self.ty)?,
+        })
     }
 }
 
 impl raw::Service {
-    pub fn resolve(self, resolver: &Resolver) -> (String, Service) {
+    pub fn resolve(self, resolver: &Resolver) -> Result<(String, Service), Vec<Error>> {
         let mut members = Vec::new();
+        let mut errors = Vec::new();
         for spanned in self.members {
-            members.push(spanned.map(|member| member.resolve(resolver)));
+            match spanned.try_map(|member| member.resolve(resolver)) {
+                Ok(member) => members.push(member),
+                Err(err) => errors.push(err),
+            };
         }
-        let service = Service {
-            attributes: self.attributes,
-            members,
-        };
-        (self.name.value, service)
+        if errors.is_empty() {
+            let service = Service {
+                attributes: self.attributes,
+                members,
+            };
+            Ok((self.name.value, service))
+        } else {
+            Err(errors)
+        }
     }
 }
 
 impl raw::ServiceMember {
-    pub fn resolve(self, resolver: &Resolver) -> ServiceMember {
-        ServiceMember {
+    pub fn resolve(self, resolver: &Resolver) -> Result<ServiceMember, Error> {
+        Ok(ServiceMember {
             attributes: self.attributes,
-            protocol: resolver.resolve_name(self.protocol),
+            protocol: resolver.resolve_name(self.protocol)?,
             name: self.name,
-        }
+        })
     }
 }
