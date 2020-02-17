@@ -18,6 +18,16 @@ pub struct NameDef {
     inner_scope: Option<HashMap<String, Span>>,
 }
 
+pub fn get_nested_def(scope: &UnresolvedScope, name: &String, member: &String) -> Option<Span> {
+    match scope.get(name) {
+        Some(NameDef { span: _, inner_scope: Some(scope) }) => match scope.get(member) {
+            Some(span) => Some(*span),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 #[derive(Default)]
 pub struct Flattener {
     pub attributes: Attributes,

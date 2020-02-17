@@ -1,6 +1,6 @@
 use super::errors::Error;
 use super::*;
-use crate::flatten::{ResolverContext, UnresolvedScope};
+use crate::flatten::{ResolverContext, UnresolvedScope, get_nested_def};
 use crate::lexer::Span;
 use crate::raw;
 // use crate::raw::Spanned;
@@ -27,7 +27,7 @@ impl Library {
             let resolver = Resolver {
                 imports: &imports,
                 local_names: &defined_names,
-                imported_names: deps,
+                deps,
             };
             for decl in file.decls {
                 match decl.value {
@@ -81,27 +81,27 @@ impl Library {
         })
     }
 
-    // pub fn lookup(&self, _var_name: String) -> Option<Spanned<Decl>> {
-    //     unimplemented!()
-    // }
+    pub fn lookup(&self, _name: &String) -> Option<Span> {
+        unimplemented!()
+    }
 }
 
 pub struct Resolver<'a> {
     pub imports: &'a FileImports,
     pub local_names: &'a UnresolvedScope,
-    pub imported_names: &'a Dependencies,
+    pub deps: &'a Dependencies,
 }
 
 impl<'a> Resolver<'a> {
     pub fn new(
         imports: &'a FileImports,
         local_names: &'a UnresolvedScope,
-        imported_names: &'a Dependencies,
+        deps: &'a Dependencies,
     ) -> Self {
         Resolver {
             imports,
             local_names,
-            imported_names,
+            deps,
         }
     }
 
@@ -157,33 +157,65 @@ impl<'a> Resolver<'a> {
         })
     }
 
-    pub fn resolve_name(&self, _name: raw::CompoundIdentifier) -> Result<Spanned<Name>, Error> {
-        unimplemented!()
-        // let span = name.span;
-        // let name = name.value;
-        // match name.len() {
-        //     1 => {
-        //         // this must be referring to something in the local context
-        //         let name = name.into_iter().next().unwrap();
-        //         if self.local_names.contains_key(&name) {
-        //             Ok(Name {
-        //                 library: None,
-        //                 name,
-        //                 member: None,
-        //             })
-        //         } else {
-        //             Err(Error::UnresolvedLocal(span))
-        //         }
-        //     }
-        //     2 => {
-        //         // if there are two components a.b, this can refer to two things:
-        //         // decl b in library a, or member b of decl a in the local library.
-        //         // TODO: the local names will need to keep track of existing member
-        //         // names too...
-        //         unimplemented!()
-        //     }
-        //     _ => unimplemented!(),
-        // }
+    pub fn resolve_name(&self, name: raw::CompoundIdentifier) -> Result<Spanned<Name>, Error> {
+        let span = name.span;
+        let name = name.value;
+        match name.len() {
+            1 => {
+                // this must be referring to a top level value in the local context
+                let name = name.into_iter().next().unwrap();
+                if self.local_names.contains_key(&name) {
+                    Ok(span.wrap(Name {
+                        library: None,
+                        name,
+                        member: None,
+                    }))
+                } else {
+                    Err(Error::Undefined(span))
+                }
+            }
+            2 => {
+                // if there are two components a.b, this can refer to two things:
+                // decl b in library a (`dep_value`), or member b of decl a in the
+                // local library (`local_value`).
+                let local_value = {
+                    let var = name.first().unwrap();
+                    let member = name.last().unwrap();
+                    match get_nested_def(self.local_names, var, member) {
+                        Some(span) => Some((span, Name{
+                            library: None,
+                            name: var.clone(),
+                            member: Some(member.clone()),
+                        })),
+                        _ => None
+                    }
+                };
+                let dep_value = {
+                    let lib_name = name.first().unwrap();
+                    let var = name.last().unwrap();
+                    match self.deps.lookup(lib_name, var) {
+                        Some(span) => Some((span, Name {
+                            library: Some(lib_name.clone()),
+                            name: var.clone(),
+                            member: None,
+                        })),
+                        _ => None
+                    }
+                };
+                match (local_value, dep_value) {
+                    (Some((local_span, local_name)), Some((dep_span, dep_name))) =>
+                        Err(Error::AmbiguousReference {
+                            span,
+                            interp1: local_span.wrap(local_name),
+                            interp2: dep_span.wrap(dep_name)
+                        }),
+                    (Some((_, local_name)), None) => Ok(span.wrap(local_name)),
+                    (None, Some((_, dep_name))) => Ok(span.wrap(dep_name)),
+                    (None, None) => Err(Error::Undefined(span)),
+                }
+            }
+            _ => unimplemented!(),
+        }
     }
 }
 
@@ -198,11 +230,11 @@ impl Dependencies {
         unimplemented!()
     }
 
-    // fn lookup(&self, lib_name: &str, var_name: String) -> Option<Spanned<Decl>> {
-    //     self.libraries
-    //         .get(lib_name)
-    //         .and_then(|lib| lib.lookup(var_name))
-    // }
+    fn lookup(&self, lib_name: &String, var: &String) -> Option<Span> {
+        self.libraries
+            .get(lib_name)
+            .and_then(|lib| lib.lookup(var))
+    }
 }
 
 #[derive(Debug)]
