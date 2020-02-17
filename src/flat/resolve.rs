@@ -243,18 +243,7 @@ impl<'a> Resolver<'a> {
                         _ => None,
                     }
                 };
-                match (local_value, dep_value) {
-                    (Some((local_span, local_name)), Some((dep_span, dep_name))) => {
-                        Err(Error::AmbiguousReference {
-                            span,
-                            interp1: local_span.wrap(local_name),
-                            interp2: dep_span.wrap(dep_name),
-                        })
-                    }
-                    (Some((_, local_name)), None) => Ok(span.wrap(local_name)),
-                    (None, Some((_, dep_name))) => Ok(span.wrap(dep_name)),
-                    (None, None) => Err(Error::Undefined(span)),
-                }
+                resolve_names(span, local_value, dep_value)
             }
             _ => {
                 // if there are more than two components, this can't refer to a local value.
@@ -290,18 +279,7 @@ impl<'a> Resolver<'a> {
                         _ => None,
                     }
                 };
-                match (member_val, toplevel_val) {
-                    (Some((mspan, mname)), Some((tspan, tname))) => {
-                        Err(Error::AmbiguousReference {
-                            span,
-                            interp1: mspan.wrap(mname),
-                            interp2: tspan.wrap(tname),
-                        })
-                    }
-                    (Some((_, member_name)), None) => Ok(span.wrap(member_name)),
-                    (None, Some((_, toplevel_name))) => Ok(span.wrap(toplevel_name)),
-                    (None, None) => Err(Error::Undefined(span)),
-                }
+                resolve_names(span, member_val, toplevel_val)
             }
         }
     }
@@ -425,6 +403,23 @@ impl FileImports {
 
     pub fn mark_used(&mut self, _absolute_import: &String) {
         unimplemented!()
+    }
+}
+
+fn resolve_names(
+    span: Span,
+    interp1: Option<(Span, Name)>,
+    interp2: Option<(Span, Name)>,
+) -> Result<Spanned<Name>, Error> {
+    match (interp1, interp2) {
+        (Some((span1, name1)), Some((span2, name2))) => Err(Error::AmbiguousReference {
+            span,
+            interp1: span1.wrap(name1),
+            interp2: span2.wrap(name2),
+        }),
+        (Some((_, name1)), None) => Ok(span.wrap(name1)),
+        (None, Some((_, name2))) => Ok(span.wrap(name2)),
+        (None, None) => Err(Error::Undefined(span)),
     }
 }
 
