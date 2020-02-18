@@ -206,15 +206,16 @@ impl<'a> Resolver<'a> {
             0 => panic!("cant have an empty name"),
             1 => {
                 // this must be referring to a top level value in the local context
-                let name = name.into_iter().next().unwrap();
-                if self.local_names.contains_key(&name) {
-                    Ok(span.wrap(Name {
-                        library: None,
-                        name,
-                        member: None,
-                    }))
+                let name_str = name.into_iter().next().unwrap();
+                let name = Name {
+                    library: None,
+                    name: name_str.clone(),
+                    member: None,
+                };
+                if self.local_names.contains_key(&name_str) {
+                    Ok(span.wrap(name))
                 } else {
-                    Err(Error::Undefined(span))
+                    Err(Error::UndefinedLocal(span))
                 }
             }
             2 => {
@@ -222,34 +223,26 @@ impl<'a> Resolver<'a> {
                 // decl b in library a (`dep_value`), or member b of decl a in the
                 // local library (`local_value`).
                 let local_value = {
-                    let var = name.first().unwrap();
-                    let member = name.last().unwrap();
-                    match get_nested_def(self.local_names, var, member) {
-                        Some(span) => Some((
-                            span,
-                            Name {
-                                library: None,
-                                name: var.clone(),
-                                member: Some(member.clone()),
-                            },
-                        )),
-                        _ => None,
-                    }
+                    let name = Name {
+                        library: None,
+                        name: name.first().unwrap().clone(),
+                        member: Some(name.last().unwrap().clone()),
+                    };
+                    let maybe_span = get_nested_def(
+                        self.local_names,
+                        &name.name,
+                        &name.member.as_ref().unwrap(),
+                    );
+                    (name, maybe_span)
                 };
                 let dep_value = {
-                    let lib_name = name.first().unwrap();
-                    let var = name.last().unwrap();
-                    match self.dep_lookup(lib_name, var, None) {
-                        Some(span) => Some((
-                            span,
-                            Name {
-                                library: Some(lib_name.clone()),
-                                name: var.clone(),
-                                member: None,
-                            },
-                        )),
-                        _ => None,
-                    }
+                    let mut name = Name {
+                        library: Some(name.first().unwrap().clone()),
+                        name: name.last().unwrap().clone(),
+                        member: None,
+                    };
+                    let maybe_span = self.dep_lookup(&mut name);
+                    (name, maybe_span)
                 };
                 resolve_names(span, local_value, dep_value)
             }
@@ -257,35 +250,22 @@ impl<'a> Resolver<'a> {
                 // if there are more than two components, this can't refer to a local value.
                 // it must either refer to a member or top level value in a dependency
                 let member_val = {
-                    let member = &name[name.len() - 1];
-                    let var = &name[name.len() - 2];
-                    let library = name[..name.len() - 2].join(".");
-                    match self.dep_lookup(&library, var, Some(member)) {
-                        Some(span) => Some((
-                            span,
-                            Name {
-                                library: Some(library),
-                                name: var.clone(),
-                                member: Some(member.clone()),
-                            },
-                        )),
-                        _ => None,
-                    }
+                    let mut name = Name {
+                        library: Some(name[..name.len() - 2].join(".")),
+                        name: name[name.len() - 2].clone(),
+                        member: Some(name[name.len() - 1].clone()),
+                    };
+                    let maybe_span = self.dep_lookup(&mut name);
+                    (name, maybe_span)
                 };
                 let toplevel_val = {
-                    let var = &name[name.len() - 1];
-                    let library = name[..name.len() - 1].join(".");
-                    match self.dep_lookup(&library, &var, None) {
-                        Some(span) => Some((
-                            span,
-                            Name {
-                                library: Some(library),
-                                name: var.clone(),
-                                member: None,
-                            },
-                        )),
-                        _ => None,
-                    }
+                    let mut name = Name {
+                        library: Some(name[..name.len() - 1].join(".")),
+                        name: name[name.len() - 1].clone(),
+                        member: None,
+                    };
+                    let maybe_span = self.dep_lookup(&mut name);
+                    (name, maybe_span)
                 };
                 resolve_names(span, member_val, toplevel_val)
             }
@@ -294,16 +274,36 @@ impl<'a> Resolver<'a> {
 
     // any name lookup in the dependencies should go through these methods, so that
     // import usage can be tracked
-    fn dep_lookup(
-        &mut self,
-        lib_name: &String,
-        var: &String,
-        member: Option<&String>,
-    ) -> Option<Span> {
-        let lib_name = self.imports.get_absolute(lib_name);
-        self.imports.mark_used(&lib_name);
+    // TODO: clean up unwraps
+    fn dep_lookup(&mut self, name: &mut Name) -> Option<Span> {
+        assert!(
+            name.library.is_some(),
+            "dep_lookup() needs a library specified"
+        );
+        name.library = Some(self.imports.get_absolute(&name.library.as_ref().unwrap()));
+        self.imports.mark_used(&name.library.as_ref().unwrap());
 
-        self.deps.lookup(&lib_name, var, member)
+        self.deps
+            .lookup(&name.library.as_ref().unwrap(), &name.name, &name.member)
+    }
+}
+
+fn resolve_names(
+    span: Span,
+    interp1: (Name, Option<Span>),
+    interp2: (Name, Option<Span>),
+) -> Result<Spanned<Name>, Error> {
+    let (name1, span1) = interp1;
+    let (name2, span2) = interp2;
+    match (span1, span2) {
+        (Some(span1), Some(span2)) => Err(Error::AmbiguousReference {
+            span,
+            interp1: span1.wrap(name1),
+            interp2: span2.wrap(name2),
+        }),
+        (Some(_), None) => Ok(span.wrap(name1)),
+        (None, Some(_)) => Ok(span.wrap(name2)),
+        (None, None) => Err(Error::Undefined(span, name1, name2)),
     }
 }
 
@@ -327,7 +327,7 @@ impl Dependencies {
         }
     }
 
-    fn lookup(&self, lib_name: &String, var: &String, member: Option<&String>) -> Option<Span> {
+    fn lookup(&self, lib_name: &String, var: &String, member: &Option<String>) -> Option<Span> {
         self.libraries.get(lib_name).and_then(|lib| match member {
             Some(member) => lib.lookup_nested(var, member),
             None => lib.lookup(var),
@@ -469,23 +469,6 @@ impl FileImports {
                 }
             })
             .collect()
-    }
-}
-
-fn resolve_names(
-    span: Span,
-    interp1: Option<(Span, Name)>,
-    interp2: Option<(Span, Name)>,
-) -> Result<Spanned<Name>, Error> {
-    match (interp1, interp2) {
-        (Some((span1, name1)), Some((span2, name2))) => Err(Error::AmbiguousReference {
-            span,
-            interp1: span1.wrap(name1),
-            interp2: span2.wrap(name2),
-        }),
-        (Some((_, name1)), None) => Ok(span.wrap(name1)),
-        (None, Some((_, name2))) => Ok(span.wrap(name2)),
-        (None, None) => Err(Error::Undefined(span)),
     }
 }
 

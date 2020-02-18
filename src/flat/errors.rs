@@ -28,7 +28,8 @@ pub enum Error {
 
     // resolution errors
     /// No definition was found for the variable referenced at Span
-    Undefined(Span),
+    UndefinedLocal(Span),
+    Undefined(Span, Name, Name),
     /// The reference found at `span` is ambiguous, and can be interpreted as
     /// either `interp1` or `interp2`. Note that the Spans for the two interpretations
     /// correpond to where the referee is defined, not where the reference is located
