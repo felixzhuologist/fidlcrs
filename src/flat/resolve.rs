@@ -69,6 +69,7 @@ impl Library {
                     },
                 }
             }
+            errors.extend(imports.get_unused_imports());
         }
 
         Ok(Library {
@@ -342,7 +343,7 @@ pub struct FileImports {
     /// A map from alias to the full library name.
     aliases: HashMap<String, String>,
     /// A map from full library name to whether this import is actually used.
-    imports: HashMap<String, bool>,
+    imports: HashMap<String, Spanned<bool>>,
 }
 
 // TODO: check that imports are in deps, and keep track of which imports are used.
@@ -353,6 +354,9 @@ pub struct FileImports {
 // and we only have that here, so FileImports must be responsible for it.
 impl FileImports {
     // TODO: does it even make sense to return multiple errors here?
+    // TODO: now that self.imports stores the spans, we could check the imports against
+    // the Dependencies separately, and make from_imports only take one parameter (which
+    // would reduce test boilerplate)
     pub fn from_imports(
         imports: Vec<Spanned<raw::Import>>,
         deps: &Dependencies,
@@ -418,7 +422,7 @@ impl FileImports {
 
             let full_imports = full_imports
                 .into_iter()
-                .map(|(k, _)| (k, false))
+                .map(|(k, v)| (k, v.0.wrap(false)))
                 .collect::<HashMap<_, _>>();
             let aliases = aliases
                 .into_iter()
@@ -450,8 +454,21 @@ impl FileImports {
 
     pub fn mark_used(&mut self, absolute_import: &String) {
         if let Some(is_used) = self.imports.get_mut(absolute_import) {
-            *is_used = true;
+            is_used.value = true;
         }
+    }
+
+    pub fn get_unused_imports(&self) -> Vec<Error> {
+        self.imports
+            .iter()
+            .filter_map(|(_, is_used)| {
+                if is_used.value {
+                    Some(Error::UnusedImport(is_used.span))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 

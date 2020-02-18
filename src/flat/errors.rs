@@ -7,17 +7,28 @@ use annotate_snippets::snippet::Snippet;
 
 #[derive(Debug, Clone)]
 pub enum Error {
-    Undefined(Span),
+    // import errors
+    /// The same library was imported multiple times
     DuplicateImport {
         import: String,
         orig: Span,
         dupe: Span,
     },
+    /// Two different libraries are imported under the same name
     ImportNameConflict {
         name: String,
         orig: Span,
         dupe: Span,
     },
+    /// A library specified in a using statement was not found in this library's dependencies
+    /// (i.e. was not included in a set of --files args)
+    DependencyNotFound(Span),
+    /// A library specified in a using statement was not used anywhere in the file
+    UnusedImport(Span),
+
+    // resolution errors
+    /// No definition was found for the variable referenced at Span
+    Undefined(Span),
     /// The reference found at `span` is ambiguous, and can be interpreted as
     /// either `interp1` or `interp2`. Note that the Spans for the two interpretations
     /// correpond to where the referee is defined, not where the reference is located
@@ -26,7 +37,8 @@ pub enum Error {
         interp1: Spanned<Name>,
         interp2: Spanned<Name>,
     },
-    DependencyNotFound(Span),
+
+    /// Two libraries were provided that have the same name
     DuplicateLibrary,
 }
 
