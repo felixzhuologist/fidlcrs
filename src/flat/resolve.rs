@@ -23,7 +23,7 @@ impl Library {
         for file in files {
             // TODO: can we continue here? note that on import duplicates, currently the old one
             // is overwritten in the new one. instead, it should just not exist?
-            let mut imports = FileImports::from_imports(file.imports)?;
+            let mut imports = FileImports::from_imports(file.imports, &deps)?;
             let mut resolver = Resolver {
                 imports: &mut imports,
                 local_names: &defined_names,
@@ -79,6 +79,13 @@ impl Library {
             protocols,
             services,
         })
+    }
+
+    // used for testing
+    pub fn empty(name: String) -> Library {
+        let mut lib = Library::default();
+        lib.name = name;
+        lib
     }
 
     pub fn lookup(&self, name: &String) -> Option<Span> {
@@ -306,8 +313,17 @@ pub struct Dependencies {
 }
 
 impl Dependencies {
-    pub fn add_library(&mut self, _lib: Library) {
-        unimplemented!()
+    pub fn contains_library(&self, library: &String) -> bool {
+        self.libraries.contains_key(library)
+    }
+
+    pub fn add_library(&mut self, lib: Library) -> Result<(), Error> {
+        if let Some(_) = self.libraries.insert(lib.name.clone(), lib) {
+            // TODO: attach more information to this error?
+            Err(Error::DuplicateLibrary)
+        } else {
+            Ok(())
+        }
     }
 
     fn lookup(&self, lib_name: &String, var: &String, member: Option<&String>) -> Option<Span> {
@@ -318,15 +334,15 @@ impl Dependencies {
     }
 }
 
+// TODO: this needs many copies of each import string. we could do better at
+// the expense of more searching (e.g. a Vector of absolute imports, and a map
+// from alias to index in that owning vector)
 #[derive(Debug)]
 pub struct FileImports {
-    /// Each full import has an entry in `imports` with a value of None, and each
-    /// aliased import has an entry in `imports` with a value of Some of the full
-    /// import that it's aliasing.
-    // TODO: this needs many copies of each import string. we could do better at
-    // the expense of more searching (e.g. a Vector of absolute imports, and a map
-    // from alias to index in that owning vector)
-    imports: HashMap<String, Option<String>>,
+    /// A map from alias to the full library name.
+    aliases: HashMap<String, String>,
+    /// A map from full library name to whether this import is actually used.
+    imports: HashMap<String, bool>,
 }
 
 // TODO: check that imports are in deps, and keep track of which imports are used.
@@ -336,13 +352,18 @@ pub struct FileImports {
 // unused imoprt instead of invalid import. but when we error, we want the import span
 // and we only have that here, so FileImports must be responsible for it.
 impl FileImports {
-    // NOTE: this only takes in raw:: data, so technically this can be done during the File
-    // "validation" step as well. but conceptually it belongs here and this at least avoids some
-    // duplicate work. Alternatively, validation could transform the File.
     // TODO: does it even make sense to return multiple errors here?
-    pub fn from_imports(imports: Vec<Spanned<raw::Import>>) -> Result<FileImports, Vec<Error>> {
+    pub fn from_imports(
+        imports: Vec<Spanned<raw::Import>>,
+        deps: &Dependencies,
+    ) -> Result<FileImports, Vec<Error>> {
+        // map from import name (either absolute or alias) to a tuple of (its span,
+        // and if it's an alias, the full name of the library it aliases). it's easier
+        // to use a single hashmap when checking for duplicate imports or name conflicts.
         let mut import_map: HashMap<String, (Span, Option<String>)> = HashMap::new();
         let mut errors: Vec<Error> = Vec::new();
+
+        // check for duplicate imports and name conflicts
         for import in imports {
             let absolute_name = import.value.name.value.join(".");
             // add the absolute import
@@ -380,13 +401,33 @@ impl FileImports {
                 }
             }
         }
+
+        for (import, (span, maybe_full_name)) in &import_map {
+            match maybe_full_name {
+                None if !deps.contains_library(import) => {
+                    errors.push(Error::DependencyNotFound(*span));
+                }
+                _ => (),
+            }
+        }
+
         if errors.is_empty() {
-            let without_spans = import_map
+            // TODO: is it possible to parition without collecting?
+            let (full_imports, aliases): (Vec<_>, Vec<_>) =
+                import_map.into_iter().partition(|(_, v)| v.1.is_none());
+
+            let full_imports = full_imports
                 .into_iter()
-                .map(|(k, v)| (k, v.1))
+                .map(|(k, _)| (k, false))
                 .collect::<HashMap<_, _>>();
+            let aliases = aliases
+                .into_iter()
+                .map(|(k, v)| (k, v.1.unwrap()))
+                .collect::<HashMap<_, _>>();
+
             Ok(FileImports {
-                imports: without_spans,
+                aliases,
+                imports: full_imports,
             })
         } else {
             Err(errors)
@@ -394,15 +435,23 @@ impl FileImports {
     }
 
     // TODO: unecessary copying
+    // TODO: this succeeds for imports that do not exist in a using statement,
+    // and just returns a copy of the import back. whether this should return an
+    // Error or not will depend on whether we care about distinguishing between
+    // undefined because of an import not being imported, or because the variable doesn't
+    // exist. the third possible kind of failure, an import not being found is
+    // checked when resolving the imports (i.e. on construction of FileImports)
     pub fn get_absolute(&self, import: &String) -> String {
-        match self.imports.get(import) {
-            Some(Some(name)) => name.clone(),
+        match self.aliases.get(import) {
+            Some(name) => name.clone(),
             _ => import.clone(),
         }
     }
 
-    pub fn mark_used(&mut self, _absolute_import: &String) {
-        unimplemented!()
+    pub fn mark_used(&mut self, absolute_import: &String) {
+        if let Some(is_used) = self.imports.get_mut(absolute_import) {
+            *is_used = true;
+        }
     }
 }
 
@@ -432,24 +481,29 @@ mod test {
 
     #[test]
     fn import_success() {
+        let mut deps = Dependencies::default();
+        deps.add_library(Library::empty("foo".to_string())).unwrap();
+        deps.add_library(Library::empty("bar".to_string())).unwrap();
         let contents = r#"library test;
 using foo;
 using bar;
 "#;
         let src = SourceFile::new(FileId(0), "test.fidl".to_string(), contents.to_string());
         let file = parse(&src).unwrap();
-        assert_eq!(FileImports::from_imports(file.imports).is_ok(), true);
+        assert_eq!(FileImports::from_imports(file.imports, &deps).is_ok(), true);
     }
 
     #[test]
     fn import_dupe_no_alias() {
+        let mut deps = Dependencies::default();
+        deps.add_library(Library::empty("foo".to_string())).unwrap();
         let contents = r#"library test;
 using foo;
 using foo;
 "#;
         let src = SourceFile::new(FileId(0), "test.fidl".to_string(), contents.to_string());
         let file = parse(&src).unwrap();
-        let errs = FileImports::from_imports(file.imports).unwrap_err();
+        let errs = FileImports::from_imports(file.imports, &deps).unwrap_err();
         assert_eq!(errs.len(), 1);
         match errs[0] {
             Error::DuplicateImport {
@@ -463,13 +517,15 @@ using foo;
 
     #[test]
     fn import_dupe_aliases() {
+        let mut deps = Dependencies::default();
+        deps.add_library(Library::empty("foo".to_string())).unwrap();
         let contents = r#"library test;
 using foo as bar;
 using foo as baz;
 "#;
         let src = SourceFile::new(FileId(0), "test.fidl".to_string(), contents.to_string());
         let file = parse(&src).unwrap();
-        let errs = FileImports::from_imports(file.imports).unwrap_err();
+        let errs = FileImports::from_imports(file.imports, &deps).unwrap_err();
         assert_eq!(errs.len(), 1);
         match errs[0] {
             Error::DuplicateImport {
@@ -483,13 +539,16 @@ using foo as baz;
 
     #[test]
     fn import_conflict() {
+        let mut deps = Dependencies::default();
+        deps.add_library(Library::empty("foo".to_string())).unwrap();
+        deps.add_library(Library::empty("bar".to_string())).unwrap();
         let contents = r#"library test;
 using foo;
 using bar as foo;
 "#;
         let src = SourceFile::new(FileId(0), "test.fidl".to_string(), contents.to_string());
         let file = parse(&src).unwrap();
-        let errs = FileImports::from_imports(file.imports).unwrap_err();
+        let errs = FileImports::from_imports(file.imports, &deps).unwrap_err();
         assert_eq!(errs.len(), 1);
         match errs[0] {
             Error::ImportNameConflict {

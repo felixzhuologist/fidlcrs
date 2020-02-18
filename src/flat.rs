@@ -41,6 +41,7 @@ pub type TypeScope = HashMap<String, Spanned<TypeEntry>>;
 pub type TermScope = HashMap<String, Spanned<TermEntry>>;
 
 // TODO: should this be in resolve instead?
+#[derive(Default)]
 pub struct Library {
     pub attributes: Attributes,
     pub name: String,

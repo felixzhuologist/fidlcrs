@@ -26,6 +26,8 @@ pub enum Error {
         interp1: Spanned<Name>,
         interp2: Spanned<Name>,
     },
+    DependencyNotFound(Span),
+    DuplicateLibrary,
 }
 
 impl Error {
