@@ -24,7 +24,7 @@ pub mod token;
 struct Args {
     #[argh(option)]
     /// a comma separated list of fidl files corresponding to a single library
-    files: String,
+    files: Vec<String>,
 }
 
 fn main() {
@@ -32,9 +32,8 @@ fn main() {
 
     let mut dependencies = flat::resolve::Dependencies::default();
     let mut error_cx = errors::ErrorCx::default();
-    // TODO: this will be per library
-    {
-        let filenames: Vec<String> = args.files.split(',').map(str::to_string).collect();
+    for lib_files in args.files {
+        let filenames: Vec<String> = lib_files.split(',').map(str::to_string).collect();
 
         let mut srcs = source_file::FileMap::new();
         let mut flattener = flatten::Flattener::default();
@@ -69,7 +68,7 @@ fn main() {
                     for error in errs {
                         error_cx.add_error(error.into_snippet(&srcs))
                     }
-                    // TODO: break here once this is per library
+                    break;
                 }
             }
         }

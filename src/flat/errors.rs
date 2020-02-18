@@ -1,9 +1,9 @@
 use super::Name;
+use crate::errors::{two_spans_to_snippet, ErrText};
 use crate::lexer::Span;
 use crate::raw::Spanned;
 use crate::source_file::FileMap;
-use annotate_snippets::snippet::Snippet;
-// use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
+use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -44,7 +44,32 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn into_snippet(self, _srcs: &FileMap) -> Snippet {
-        unimplemented!()
+    pub fn into_snippet(self, srcs: &FileMap) -> Snippet {
+        use Error::*;
+        match self {
+            DuplicateImport { import, orig, dupe } => two_spans_to_snippet(
+                orig,
+                dupe,
+                srcs,
+                ErrText {
+                    text: "duplicate library import".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: format!("library {} imported here", import),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "also imported here".to_string(),
+                    ty: AnnotationType::Info,
+                },
+                Some(Annotation {
+                    label: Some("remove one of the imports".to_string()),
+                    id: None,
+                    annotation_type: AnnotationType::Help,
+                }),
+            ),
+            _ => unimplemented!(),
+        }
     }
 }

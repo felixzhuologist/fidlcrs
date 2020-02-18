@@ -1,0 +1,5 @@
+library test;
+
+using foo;
+using foo as bar;
+
