@@ -72,14 +72,18 @@ impl Library {
             errors.extend(imports.get_unused_imports());
         }
 
-        Ok(Library {
-            attributes,
-            name,
-            terms,
-            types,
-            protocols,
-            services,
-        })
+        if errors.is_empty() {
+            Ok(Library {
+                attributes,
+                name,
+                terms,
+                types,
+                protocols,
+                services,
+            })
+        } else {
+            Err(errors)
+        }
     }
 
     // used for testing
@@ -462,7 +466,7 @@ impl FileImports {
         self.imports
             .iter()
             .filter_map(|(_, is_used)| {
-                if is_used.value {
+                if !is_used.value {
                     Some(Error::UnusedImport(is_used.span))
                 } else {
                     None

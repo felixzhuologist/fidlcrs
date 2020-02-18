@@ -1,0 +1,6 @@
+library test;
+
+using foo as baz;
+using bar as baz;
+
+

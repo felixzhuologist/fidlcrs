@@ -1,0 +1,4 @@
+library bar;
+
+struct Bar {};
+

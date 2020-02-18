@@ -1,0 +1,6 @@
+library test;
+
+using foo;
+
+struct Baz {};
+

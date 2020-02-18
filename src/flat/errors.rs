@@ -1,5 +1,5 @@
 use super::Name;
-use crate::errors::{two_spans_to_snippet, ErrText};
+use crate::errors::{span_to_snippet, two_spans_to_snippet, ErrText};
 use crate::lexer::Span;
 use crate::raw::Spanned;
 use crate::source_file::FileMap;
@@ -65,6 +65,58 @@ impl Error {
                 },
                 Some(Annotation {
                     label: Some("remove one of the imports".to_string()),
+                    id: None,
+                    annotation_type: AnnotationType::Help,
+                }),
+            ),
+            ImportNameConflict { name, orig, dupe } => two_spans_to_snippet(
+                orig,
+                dupe,
+                srcs,
+                ErrText {
+                    text: "name conflict in library imports".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: format!("library imported under name {}", name),
+                    ty: AnnotationType::Info,
+                },
+                ErrText {
+                    text: "clashes with import here".to_string(),
+                    ty: AnnotationType::Info,
+                },
+                None,
+            ),
+            DependencyNotFound(span) => span_to_snippet(
+                span,
+                srcs,
+                ErrText {
+                    text: "imported library not found".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "library was not found in specified dependencies".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                Some(Annotation {
+                    label: Some("did you include it with --files?".to_string()),
+                    id: None,
+                    annotation_type: AnnotationType::Help,
+                }),
+            ),
+            UnusedImport(span) => span_to_snippet(
+                span,
+                srcs,
+                ErrText {
+                    text: "unused import".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "import here is not referenced in the rest of the file".to_string(),
+                    ty: AnnotationType::Info,
+                },
+                Some(Annotation {
+                    label: Some("consider removing this import".to_string()),
                     id: None,
                     annotation_type: AnnotationType::Help,
                 }),

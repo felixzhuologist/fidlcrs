@@ -1,0 +1,4 @@
+library test;
+
+using foo;
+using bar as foo;
