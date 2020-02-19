@@ -1,0 +1,10 @@
+library test;
+
+enum bar {
+  foo = 1;
+};
+
+struct uhoh {
+  bar.foo baz;
+};
+

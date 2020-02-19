@@ -2,3 +2,5 @@ library bar;
 
 struct Bar {};
 
+struct foo {};
+

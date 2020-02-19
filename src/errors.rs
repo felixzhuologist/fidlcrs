@@ -116,6 +116,27 @@ pub fn two_spans_to_snippet(
     }
 }
 
+// TODO: share Slice for any snippets in the same source (generalize the logic
+// from two_spans_to_snippet to apply to N spans)
+pub fn three_spans_to_snippet(
+    title: ErrText,
+    annotations: Vec<(Span, ErrText)>,
+    srcs: &FileMap,
+) -> Snippet {
+    Snippet {
+        title: Some(Annotation {
+            label: Some(title.text),
+            id: None,
+            annotation_type: title.ty,
+        }),
+        footer: vec![],
+        slices: annotations
+            .into_iter()
+            .map(|(span, text)| span_to_slice(span, srcs, text))
+            .collect(),
+    }
+}
+
 fn span_to_slice(span: Span, srcs: &FileMap, annotation: ErrText) -> Slice {
     let src = srcs.get_file(span.file);
     let (line_start, source) = src.surrounding_lines(span.start, span.end);

@@ -312,6 +312,7 @@ fn resolve_names(
 }
 
 // TODO: this will be its own module once it's fleshed out some more
+// TODO: keep track of unused dependencies
 #[derive(Default)]
 pub struct Dependencies {
     libraries: HashMap<String, Library>,
@@ -323,9 +324,11 @@ impl Dependencies {
     }
 
     pub fn add_library(&mut self, lib: Library) -> Result<(), Error> {
-        if let Some(_) = self.libraries.insert(lib.name.clone(), lib) {
+        // TODO: extra copies
+        let name = lib.name.clone();
+        if let Some(_) = self.libraries.insert(name.clone(), lib) {
             // TODO: attach more information to this error?
-            Err(Error::DuplicateLibrary)
+            Err(Error::DuplicateLibrary(name.clone()))
         } else {
             Ok(())
         }

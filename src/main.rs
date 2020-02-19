@@ -32,10 +32,10 @@ fn main() {
 
     let mut dependencies = flat::resolve::Dependencies::default();
     let mut error_cx = errors::ErrorCx::default();
+    let mut srcs = source_file::FileMap::new();
     for lib_files in args.files {
         let filenames: Vec<String> = lib_files.split(',').map(str::to_string).collect();
 
-        let mut srcs = source_file::FileMap::new();
         let mut flattener = flatten::Flattener::default();
         for path in filenames {
             let raw_contents = read_file(&path);

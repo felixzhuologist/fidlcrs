@@ -1,9 +1,10 @@
 use super::Name;
-use crate::errors::{span_to_snippet, two_spans_to_snippet, ErrText};
+use crate::errors::{span_to_snippet, three_spans_to_snippet, two_spans_to_snippet, ErrText};
 use crate::lexer::Span;
 use crate::raw::Spanned;
 use crate::source_file::FileMap;
-use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
+use annotate_snippets::snippet::{Annotation, AnnotationType, Snippet};
+use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -40,7 +41,7 @@ pub enum Error {
     },
 
     /// Two libraries were provided that have the same name
-    DuplicateLibrary,
+    DuplicateLibrary(String),
 }
 
 impl Error {
@@ -134,7 +135,80 @@ impl Error {
                 },
                 None,
             ),
-            _ => unimplemented!(),
+            Undefined(span, name1, name2) => span_to_snippet(
+                span,
+                srcs,
+                ErrText {
+                    text: "undefined name".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "could not find definition for this variable".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                Some(Annotation {
+                    label: Some(format!("both {} and {} are undefined", name1, name2)),
+                    id: None,
+                    annotation_type: AnnotationType::Info,
+                }),
+            ),
+            AmbiguousReference {
+                span,
+                interp1,
+                interp2,
+            } => three_spans_to_snippet(
+                ErrText {
+                    text: "ambiguous reference".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                vec![
+                    (
+                        span,
+                        ErrText {
+                            text: "multiple ways to resolve this reference".to_string(),
+                            ty: AnnotationType::Error,
+                        },
+                    ),
+                    (
+                        interp1.span,
+                        ErrText {
+                            text: format!("reference could be interpreted as {}", interp1.value),
+                            ty: AnnotationType::Info,
+                        },
+                    ),
+                    (
+                        interp2.span,
+                        ErrText {
+                            text: format!("or as {}", interp2.value),
+                            ty: AnnotationType::Info,
+                        },
+                    ),
+                ],
+                srcs,
+            ),
+            DuplicateLibrary(name) => Snippet {
+                title: Some(Annotation {
+                    label: Some(format!("multiple libraries with name {}", name)),
+                    id: None,
+                    annotation_type: AnnotationType::Error,
+                }),
+                footer: vec![],
+                slices: vec![],
+            },
         }
+    }
+}
+
+impl fmt::Display for Name {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let lib_str = match &self.library {
+            Some(lib) => format!("library {}", lib),
+            None => "the current library".to_string(),
+        };
+        let var_str = match &self.member {
+            Some(member) => format!("{}.{}", self.name, member),
+            None => format!("{}", self.name),
+        };
+        write!(f, "{} in {}", var_str, lib_str)
     }
 }

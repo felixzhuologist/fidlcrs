@@ -1,0 +1,9 @@
+library test;
+
+using foo;
+using foo.bar;
+
+struct Foo {
+  foo.bar.baz foo;
+};
+
