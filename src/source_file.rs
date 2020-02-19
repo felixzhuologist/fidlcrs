@@ -43,6 +43,9 @@ impl SourceFile {
         &self.contents
     }
 
+    /// Return the starting offset and a string copy of the lines surrounding
+    /// the span of the start and end offsets. Currently, "surrounding" means
+    /// including the 2 lines above and below the contents of the span (if they exist)
     pub fn surrounding_lines(&self, start: usize, end: usize) -> (usize, String) {
         let (start_line, end_line) = self.lines.surrounding_lines(start, end);
         let start = self.lines.offset_at_line_number(start_line);
@@ -122,6 +125,9 @@ impl Lines {
         }
     }
 
+    /// Takes in a start and end offset, and returns the line numbers of the
+    /// lines surrounding the span of those two offsets. Currently, "surrounding"
+    /// means including two lines above and below it (if they exist)
     pub fn surrounding_lines(&self, start: usize, end: usize) -> (usize, usize) {
         (
             self.line_number_at_offset(start).saturating_sub(2),

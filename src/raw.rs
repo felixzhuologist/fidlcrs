@@ -280,7 +280,7 @@ impl fmt::Display for FidlType {
             BitsMember => write!(f, "bits field"),
             ConstDecl => write!(f, "const declaration"),
             EnumDecl => write!(f, "enum declaration"),
-            EnumMember => write!(f, "bits field"),
+            EnumMember => write!(f, "enum field"),
             ProtocolDecl => write!(f, "interface declaration"),
             Library => write!(f, "library declaration"),
             Method => write!(f, "interface method"),

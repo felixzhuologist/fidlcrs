@@ -73,9 +73,12 @@ pub fn two_spans_to_snippet(
         // if they're in the same file, the snippet source should encompass both
         // spans.
         let src_start = cmp::min(span1.start, span2.start);
-        let src_end = cmp::min(span1.end, span2.end);
+        let src_end = cmp::max(span1.end, span2.end);
         let (line_start, source) = src.surrounding_lines(src_start, src_end);
         let source_start = src.lines.offset_at_line_number(line_start);
+
+        let range1 = span_to_range(span1, source_start, &source);
+        let range2 = span_to_range(span2, source_start, &source);
         vec![Slice {
             source,
             line_start,
@@ -85,12 +88,12 @@ pub fn two_spans_to_snippet(
                 SourceAnnotation {
                     label: annotation1.text,
                     annotation_type: annotation1.ty,
-                    range: (span1.start - source_start, span1.end - source_start),
+                    range: range1,
                 },
                 SourceAnnotation {
                     label: annotation2.text,
                     annotation_type: annotation2.ty,
-                    range: (span2.start - source_start, span2.end - source_start),
+                    range: range2,
                 },
             ],
         }]
@@ -118,15 +121,29 @@ fn span_to_slice(span: Span, srcs: &FileMap, annotation: ErrText) -> Slice {
     let (line_start, source) = src.surrounding_lines(span.start, span.end);
     let source_start = src.lines.offset_at_line_number(line_start);
 
+    let range = span_to_range(span, source_start, &source);
     Slice {
         source,
-        line_start,
+        // the source_file algos are 0 indexed, but for display we want lines to be 1 indexed
+        line_start: line_start + 1,
         origin: Some(src.path.clone()),
         fold: false,
         annotations: vec![SourceAnnotation {
             label: annotation.text,
             annotation_type: annotation.ty,
-            range: (span.start - source_start, span.end - source_start),
+            range,
         }],
     }
+}
+
+fn span_to_range(span: Span, slice_start: usize, source: &String) -> (usize, usize) {
+    // convert absolute offsets into offsets relative to the start of `source`
+    let mut start = span.start - slice_start;
+    let mut end = span.end - slice_start;
+
+    // for some reason annotate_snippets thinks \n is two chars instead of one,
+    // so we need to update the offsets to compensate by adding +1 for each \n
+    start += source[..start].chars().filter(|c| c == &'\n').count();
+    end += source[..end].chars().filter(|c| c == &'\n').count();
+    (start, end)
 }
