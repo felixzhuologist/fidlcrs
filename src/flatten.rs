@@ -18,7 +18,7 @@ pub struct NameDef {
     inner_scope: Option<HashMap<String, Span>>,
 }
 
-pub fn get_nested_def(scope: &UnresolvedScope, name: &String, member: &String) -> Option<Span> {
+pub fn get_local_member(scope: &UnresolvedScope, name: &String, member: &String) -> Option<Span> {
     match scope.get(name) {
         Some(NameDef {
             span: _,

@@ -1,6 +1,6 @@
 use super::errors::Error;
 use super::*;
-use crate::flatten::{get_nested_def, ResolverContext, UnresolvedScope};
+use crate::flatten::{get_local_member, ResolverContext, UnresolvedScope};
 use crate::lexer::Span;
 use crate::raw;
 // use crate::raw::Spanned;
@@ -216,7 +216,7 @@ impl<'a> Resolver<'a> {
                     name: name_str.clone(),
                     member: None,
                 };
-                if self.local_names.contains_key(&name_str) {
+                if is_builtin(&name_str) || self.local_names.contains_key(&name_str) {
                     Ok(span.wrap(name))
                 } else {
                     Err(Error::UndefinedLocal(span))
@@ -232,7 +232,7 @@ impl<'a> Resolver<'a> {
                         name: name.first().unwrap().clone(),
                         member: Some(name.last().unwrap().clone()),
                     };
-                    let maybe_span = get_nested_def(
+                    let maybe_span = get_local_member(
                         self.local_names,
                         &name.name,
                         &name.member.as_ref().unwrap(),
@@ -473,6 +473,16 @@ impl FileImports {
                 }
             })
             .collect()
+    }
+}
+
+// TODO: this should probably go somewhere else? also we want to prevent users
+// from naming variables things that are in here
+pub fn is_builtin(var: &String) -> bool {
+    match var.as_str() {
+        "bool" | "uint8" | "uint16" | "uint32" | "uint64" | "int8" | "int16" | "int32"
+        | "int64" | "float32" | "float64" | "string" | "vector" | "byte" | "bytes" => true,
+        _ => false,
     }
 }
 
