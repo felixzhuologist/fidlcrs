@@ -121,6 +121,19 @@ impl Error {
                     annotation_type: AnnotationType::Help,
                 }),
             ),
+            UndefinedLocal(span) => span_to_snippet(
+                span,
+                srcs,
+                ErrText {
+                    text: "undefined name".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "could not find definition for this variable".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                None,
+            ),
             _ => unimplemented!(),
         }
     }
