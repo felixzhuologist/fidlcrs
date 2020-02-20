@@ -18,6 +18,7 @@ pub mod raw;
 pub mod source_file;
 pub mod span;
 pub mod token;
+pub mod typeshape;
 
 #[derive(FromArgs)]
 /// The FIDL compiler, rust edition

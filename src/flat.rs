@@ -123,6 +123,13 @@ impl Bits {
         }
         return None;
     }
+
+    pub fn get_type(&self) -> &Type {
+        self.ty
+            .as_ref()
+            .map(|ty| &*ty.value)
+            .unwrap_or(&Type::UInt32)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -147,6 +154,13 @@ impl Enum {
             }
         }
         return None;
+    }
+
+    pub fn get_type(&self) -> &Type {
+        self.ty
+            .as_ref()
+            .map(|ty| &*ty.value)
+            .unwrap_or(&Type::UInt32)
     }
 }
 
@@ -176,6 +190,14 @@ pub struct Table {
     pub members: Vec<Spanned<TableMember>>,
 }
 
+impl Table {
+    pub fn strictness(&self) -> Strictness {
+        self.strictness
+            .map(|sp| sp.value)
+            .unwrap_or(Strictness::Flexible)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TableMember {
     pub attributes: Attributes,
@@ -198,6 +220,14 @@ pub enum TableMemberInner {
 pub struct Union {
     pub strictness: Option<Spanned<Strictness>>,
     pub members: Vec<Spanned<UnionMember>>,
+}
+
+impl Union {
+    pub fn strictness(&self) -> Strictness {
+        self.strictness
+            .map(|sp| sp.value)
+            .unwrap_or(Strictness::Flexible)
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -238,7 +238,7 @@ pub struct IntLiteral {
     pub is_negative: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Strictness {
     Strict,
     Flexible,
