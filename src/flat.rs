@@ -88,17 +88,7 @@ pub enum Type {
     /// In fidl, this is a `request<P>` where `P` is a protocol
     ServerEnd(Name),
     TypeSubstitution(TypeSubstitution),
-    Bool,
-    Int8,
-    Int16,
-    Int32,
-    Int64,
-    UInt8,
-    UInt16,
-    UInt32,
-    UInt64,
-    Float32,
-    Float64,
+    Primitive(PrimitiveSubtype),
 
     // an "untyped" int literal: this is the type that we assign to e.g. "3"
     // before we check that it's assignable to the type that the user says
@@ -128,7 +118,7 @@ impl Bits {
         self.ty
             .as_ref()
             .map(|ty| &*ty.value)
-            .unwrap_or(&Type::UInt32)
+            .unwrap_or(&Type::Primitive(PrimitiveSubtype::UInt32))
     }
 }
 
@@ -160,7 +150,7 @@ impl Enum {
         self.ty
             .as_ref()
             .map(|ty| &*ty.value)
-            .unwrap_or(&Type::UInt32)
+            .unwrap_or(&Type::Primitive(PrimitiveSubtype::UInt32))
     }
 }
 
@@ -316,6 +306,21 @@ pub enum HandleSubtype {
     VCpu,
     Vmar,
     Vmo,
+}
+
+#[derive(Debug, Clone)]
+pub enum PrimitiveSubtype {
+    Bool,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    Float32,
+    Float64,
 }
 
 #[derive(Debug, Clone)]

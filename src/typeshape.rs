@@ -1,4 +1,5 @@
 use crate::flat;
+use crate::flat::PrimitiveSubtype::*;
 use crate::flat::Type;
 use crate::raw::Strictness;
 
@@ -87,10 +88,13 @@ fn unaligned_size(ty: &Type, wire_format: WireFormat) -> u32 {
             element_type: _,
             size: _,
         }) => unimplemented!(),
-        Bool | Int8 | UInt8 => 1,
-        Int16 | UInt16 => 2,
-        Int32 | UInt32 | Float32 | ClientEnd(_) | ServerEnd(_) | Handle(_) => 4,
-        Int64 | UInt64 | Float64 => 8,
+        ClientEnd(_) | ServerEnd(_) | Handle(_) => 4,
+        Primitive(subtype) => match subtype {
+            Bool | Int8 | UInt8 => 1,
+            Int16 | UInt16 => 2,
+            Int32 | UInt32 | Float32 => 4,
+            Int64 | UInt64 | Float64 => 8,
+        },
         Int => panic!("untyped ints don't have a typeshape"),
         // TODO: is this valid? maybe in the repl
         TypeSubstitution(_) => unimplemented!(),
@@ -122,8 +126,7 @@ fn alignment(ty: &Type, wire_format: WireFormat) -> u32 {
             size: _,
         }) => alignment(element_type.as_ref().unwrap(), wire_format),
         ClientEnd(_) | ServerEnd(_) | Handle(_) => 4,
-        Bool | Int8 | UInt8 | Int16 | UInt16 | Int32 | UInt32 | Float32 | Int64 | UInt64
-        | Float64 => unaligned_size(ty, wire_format),
+        Primitive(_) => unaligned_size(ty, wire_format),
         Int => panic!("untyped ints don't have a typeshape"),
         // TODO: is this valid? maybe in the repl
         TypeSubstitution(_) => unimplemented!(),
@@ -179,9 +182,8 @@ fn depth(ty: &Type, wire_format: WireFormat) -> u32 {
             element_type,
             size: _,
         }) => depth(element_type.as_ref().unwrap(), wire_format),
-        Bits(_) | Enum(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Bool | Int8 | UInt8
-        | Int16 | UInt16 | Int32 | UInt32 | Float32 | Int64 | UInt64 | Float64 => 0,
-        Int => 0,
+        Bits(_) | Enum(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Primitive(_) => 0,
+        Int => panic!("untyped ints don't have a typeshape"),
         // TODO: is this valid? maybe in the repl
         TypeSubstitution(_) | Envelope(_) | NNEnvelope(_) => unimplemented!(),
     }
@@ -226,8 +228,8 @@ fn max_handles(ty: &Type, wire_format: WireFormat) -> u32 {
         Str(_) => 0,
         Vector(_) | Array(_) => unimplemented!(),
         ClientEnd(_) | ServerEnd(_) | Handle(_) => 1,
-        Bits(_) | Enum(_) | Bool | Int8 | UInt8 | Int16 | UInt16 | Int32 | UInt32 | Float32
-        | Int64 | UInt64 | Float64 | Int => 0,
+        Bits(_) | Enum(_) | Primitive(_) => 0,
+        Int => panic!("untyped ints don't have a typeshape"),
         // TODO: is this valid? maybe in the repl
         TypeSubstitution(_) => unimplemented!(),
     }
@@ -281,8 +283,8 @@ fn max_out_of_line(ty: &Type, wire_format: WireFormat) -> u32 {
         Str(_) => unimplemented!(),
         Vector(_) => unimplemented!(),
         Array(_) => unimplemented!(),
-        Bits(_) | Enum(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Bool | Int8 | UInt8
-        | Int16 | UInt16 | Int32 | UInt32 | Float32 | Int64 | UInt64 | Float64 | Int => 0,
+        Bits(_) | Enum(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Primitive(_) => 0,
+        Int => panic!("untyped ints don't have a typeshape"),
         // TODO: is this valid? maybe in the repl
         TypeSubstitution(_) => unimplemented!(),
     }
@@ -316,8 +318,8 @@ fn has_padding(ty: &Type, wire_format: WireFormat) -> bool {
             element_type,
             size: _,
         }) => has_padding(element_type.as_ref().unwrap(), wire_format),
-        Bits(_) | Enum(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Bool | Int8 | UInt8
-        | Int16 | UInt16 | Int32 | UInt32 | Float32 | Int64 | UInt64 | Float64 | Int => false,
+        Bits(_) | Enum(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Primitive(_) => false,
+        Int => panic!("untyped ints don't have a typeshape"),
         // TODO: is this valid? maybe in the repl
         TypeSubstitution(_) => unimplemented!(),
     }
@@ -362,10 +364,10 @@ fn has_flexible_envelope(ty: &Type, wire_format: WireFormat) -> bool {
             element_type,
             size: _,
         }) => has_padding(element_type.as_ref().unwrap(), wire_format),
-        Bits(_) | Enum(_) | Str(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Bool | Int8
-        | UInt8 | Int16 | UInt16 | Int32 | UInt32 | Float32 | Int64 | UInt64 | Float64 | Int => {
+        Bits(_) | Enum(_) | Str(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Primitive(_) => {
             false
         }
+        Int => panic!("untyped ints don't have a typeshape"),
         // TODO: is this valid? maybe in the repl
         TypeSubstitution(_) => unimplemented!(),
     }
@@ -399,10 +401,10 @@ fn contains_union(ty: &Type, wire_format: WireFormat) -> bool {
             element_type,
             size: _,
         }) => contains_union(element_type.as_ref().unwrap(), wire_format),
-        Bits(_) | Enum(_) | Str(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Bool | Int8
-        | UInt8 | Int16 | UInt16 | Int32 | UInt32 | Float32 | Int64 | UInt64 | Float64 | Int => {
+        Bits(_) | Enum(_) | Str(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Primitive(_) => {
             false
         }
+        Int => panic!("untyped ints don't have a typeshape"),
         // TODO: is this valid? maybe in the repl
         TypeSubstitution(_) => unimplemented!(),
     }
