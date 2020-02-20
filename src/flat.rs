@@ -75,8 +75,6 @@ pub enum Type {
     Union(Union),
     Identifier(Name),
     Ptr(Box<Type>),
-    Envelope(Box<Type>),
-    NNEnvelope(Box<Type>),
     Array(Array),
     Vector(Vector),
     // Note: a `string` is just a `vector<uint8>`, but gets its own variant in the
@@ -516,8 +514,6 @@ pub fn eval_ty<T: Namespace>(ty: &Type, scope: &T) -> Result<Type, Name> {
         Type::Table(_) => unimplemented!(),
         Type::Union(_) => unimplemented!(),
         Type::Ptr(_) => unimplemented!(),
-        Type::Envelope(_) => unimplemented!(),
-        Type::NNEnvelope(_) => unimplemented!(),
         Type::Array(_) => unimplemented!(),
         Type::Vector(_) => unimplemented!(),
         // this is the more interesting one. "type operator application"
@@ -579,8 +575,6 @@ pub fn kind_check<T: Namespace>(ty: &Type, scope: &T) -> Result<Kind, Name> {
         Type::Table(_) => unimplemented!(),
         Type::Union(_) => unimplemented!(),
         Type::Ptr(_) => unimplemented!(),
-        Type::Envelope(_) => unimplemented!(),
-        Type::NNEnvelope(_) => unimplemented!(),
         Type::Identifier(name) => match scope.lookup_kind(name) {
             Some(kind) => Ok(*kind),
             None => Err(name.clone()),

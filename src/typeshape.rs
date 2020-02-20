@@ -8,6 +8,19 @@ pub enum WireFormat {
     V1,
 }
 
+// #[derive(Debug, Clone)]
+// pub enum Type {
+//     Product(Vec<Box<Type>>);
+//     Sum(Vec<Box<Type>>);
+//     Envelope(Box<Type>);
+//     NNEnvelope(Box<Type>);
+//     Ptr(Box<Type>);
+//     Array(Box<Type>, u32);
+//     Vector(Box<Type> u32);
+//     Handle,
+//     Primitive(flat::PrimitiveSubtype),
+// }
+
 #[derive(Debug, Clone)]
 pub struct TypeShape {
     /// The inline size of this type, including padding for the type's minimum alignment. For
@@ -79,10 +92,7 @@ fn unaligned_size(ty: &Type, wire_format: WireFormat) -> u32 {
         // TODO: do this first, so we understand what else this function needs
         Identifier(_) => unimplemented!(),
         Ptr(_) => 8,
-        // would unaligned size ever be called on union or table directly? and what
-        // should that return? i guess they would always be wrapped in a Vector or
-        // an Envelope
-        Union(_) | Envelope(_) | NNEnvelope(_) => 24,
+        Union(_) => 24,
         Table(_) | Vector(_) | Str(_) => 16,
         Array(flat::Array {
             element_type: _,
@@ -119,7 +129,7 @@ fn alignment(ty: &Type, wire_format: WireFormat) -> u32 {
         // TODO: do this first, so we understand what else this function needs
         Identifier(_) => unimplemented!(),
         Ptr(_) => 8,
-        Union(_) | Envelope(_) | NNEnvelope(_) => 8,
+        Union(_) => 8,
         Table(_) | Vector(_) | Str(_) => 8,
         Array(flat::Array {
             element_type,
@@ -185,7 +195,7 @@ fn depth(ty: &Type, wire_format: WireFormat) -> u32 {
         Bits(_) | Enum(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Primitive(_) => 0,
         Int => panic!("untyped ints don't have a typeshape"),
         // TODO: is this valid? maybe in the repl
-        TypeSubstitution(_) | Envelope(_) | NNEnvelope(_) => unimplemented!(),
+        TypeSubstitution(_) => unimplemented!(),
     }
 }
 
@@ -224,7 +234,7 @@ fn max_handles(ty: &Type, wire_format: WireFormat) -> u32 {
             .unwrap_or(0),
         // TODO: do this first, so we understand what else this function needs
         Identifier(_) => unimplemented!(),
-        Ptr(ty) | Envelope(ty) | NNEnvelope(ty) => max_handles(&*ty, wire_format),
+        Ptr(ty) => max_handles(&*ty, wire_format),
         Str(_) => 0,
         Vector(_) | Array(_) => unimplemented!(),
         ClientEnd(_) | ServerEnd(_) | Handle(_) => 1,
@@ -279,7 +289,6 @@ fn max_out_of_line(ty: &Type, wire_format: WireFormat) -> u32 {
         Identifier(_) => unimplemented!(),
         // TODO: do we want to check that some things can't be nullable at this step?
         Ptr(ty) => unaligned_size(&*ty, wire_format) + max_out_of_line(&*ty, wire_format),
-        Envelope(ty) | NNEnvelope(ty) => max_out_of_line(&*ty, wire_format),
         Str(_) => unimplemented!(),
         Vector(_) => unimplemented!(),
         Array(_) => unimplemented!(),
@@ -311,7 +320,7 @@ fn has_padding(ty: &Type, wire_format: WireFormat) -> bool {
         Union(_) => true,
         // TODO: do this first, so we understand what else this function needs
         Identifier(_) => unimplemented!(),
-        Ptr(ty) | Envelope(ty) | NNEnvelope(ty) => has_padding(&*ty, wire_format),
+        Ptr(ty) => has_padding(&*ty, wire_format),
         Str(_) => true,
         Vector(_) => unimplemented!(),
         Array(flat::Array {
@@ -355,7 +364,7 @@ fn has_flexible_envelope(ty: &Type, wire_format: WireFormat) -> bool {
         // TODO: do this first, so we understand what else this function needs
         Identifier(_) => unimplemented!(),
         // ??
-        Ptr(ty) | Envelope(ty) | NNEnvelope(ty) => has_flexible_envelope(&*ty, wire_format),
+        Ptr(ty) => has_flexible_envelope(&*ty, wire_format),
         Vector(flat::Vector {
             element_type,
             bounds: _,
@@ -392,7 +401,7 @@ fn contains_union(ty: &Type, wire_format: WireFormat) -> bool {
         // TODO: do this first, so we understand what else this function needs
         Identifier(_) => unimplemented!(),
         // ??
-        Ptr(ty) | Envelope(ty) | NNEnvelope(ty) => contains_union(&*ty, wire_format),
+        Ptr(ty) => contains_union(&*ty, wire_format),
         Vector(flat::Vector {
             element_type,
             bounds: _,
