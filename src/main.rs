@@ -54,24 +54,28 @@ fn main() {
                 }
             };
         }
-        if !flattener.files.is_empty() {
-            let (lib_ctx, errors) = flattener.finish();
-            for error in errors {
-                error_cx.add_error(error.into_snippet(&srcs));
-            }
-            match flat::Library::from_files(lib_ctx, &dependencies) {
-                Ok(lib) => {
-                    if let Err(err) = dependencies.add_library(lib) {
-                        error_cx.add_error(err.into_snippet(&srcs))
-                    }
+
+        if flattener.files.is_empty() {
+            break;
+        }
+
+        let (lib_ctx, errors) = flattener.finish();
+        for error in errors {
+            error_cx.add_error(error.into_snippet(&srcs));
+        }
+
+        let lib = match flat::Library::from_files(lib_ctx, &dependencies) {
+            Ok(lib) => lib,
+            Err(errs) => {
+                for error in errs {
+                    error_cx.add_error(error.into_snippet(&srcs))
                 }
-                Err(errs) => {
-                    for error in errs {
-                        error_cx.add_error(error.into_snippet(&srcs))
-                    }
-                    break;
-                }
+                break;
             }
+        };
+
+        if let Err(err) = dependencies.add_library(lib) {
+            error_cx.add_error(err.into_snippet(&srcs))
         }
     }
     error_cx.print_errors();

@@ -291,6 +291,8 @@ pub fn can_be_finite(ty: &Type) -> bool {
         // Identifier(_name) => unimplemented!(),
         Product(members) | Sum(members) => members.iter().all(|m| can_be_finite(&*m)),
         Array(ty, _) | Envelope(ty, false, _) => can_be_finite(&*ty),
-        Ptr(_) | Envelope(_, true, _) | DynVector(_, _) | Vector(_, _) | Handle | Primitive(_) => true,
+        Ptr(_) | Envelope(_, true, _) | DynVector(_, _) | Vector(_, _) | Handle | Primitive(_) => {
+            true
+        }
     }
 }

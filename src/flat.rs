@@ -7,6 +7,7 @@ use std::fmt;
 
 pub mod errors;
 pub mod resolve;
+pub mod validate;
 pub mod visitor;
 
 // we can't place the attributes directly into the term/type, because

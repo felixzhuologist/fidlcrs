@@ -1,3 +1,4 @@
+// TODO: find a better name
 //! Calls .resolve_type(), .resolve_value(), and .resolve_name() on each
 //! Type, Term, and CompoundIdentifier in a raw AST, converting them to their
 //! flat equivalents. This is roughly implemented in the visitor pattern but

@@ -324,6 +324,8 @@ impl Dependencies {
     }
 
     pub fn add_library(&mut self, lib: Library) -> Result<(), Error> {
+        // validate::validate_library(&lib, &self);
+
         // TODO: extra copies
         let name = lib.name.clone();
         if let Some(_) = self.libraries.insert(name.clone(), lib) {
