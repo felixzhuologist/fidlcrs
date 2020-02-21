@@ -311,49 +311,6 @@ fn resolve_names(
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
-pub struct LibraryId(pub usize);
-
-// TODO: this will be its own module once it's fleshed out some more
-// TODO: keep track of unused dependencies
-#[derive(Default)]
-pub struct Libraries {
-    /// Topologically sorted list of Libraries
-    libraries: Vec<Library>,
-    name_to_id: HashMap<String, LibraryId>,
-}
-
-impl Libraries {
-    pub fn contains_library(&self, library: &String) -> bool {
-        self.name_to_id.contains_key(library)
-    }
-
-    pub fn add_library(&mut self, lib: Library) -> Result<(), Error> {
-        // validate::validate_library(&lib, &self);
-
-        // TODO: extra copies
-        let name = lib.name.clone();
-        let id = LibraryId(self.libraries.len());
-        if let Some(_) = self.name_to_id.insert(name.clone(), id) {
-            // TODO: attach more information to this error?
-            Err(Error::DuplicateLibrary(name))
-        } else {
-            self.libraries.push(lib);
-            Ok(())
-        }
-    }
-
-    fn lookup(&self, lib_name: &String, var: &String, member: &Option<String>) -> Option<Span> {
-        self.name_to_id
-            .get(lib_name)
-            .map(|id| &self.libraries[id.0])
-            .and_then(|lib| match member {
-                Some(member) => lib.lookup_nested(var, member),
-                None => lib.lookup(var),
-            })
-    }
-}
-
 // TODO: this needs many copies of each import string. we could do better at
 // the expense of more searching (e.g. a Vector of absolute imports, and a map
 // from alias to index in that owning vector)

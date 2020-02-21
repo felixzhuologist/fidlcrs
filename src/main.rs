@@ -31,7 +31,7 @@ struct Args {
 fn main() {
     let args: Args = argh::from_env();
 
-    let mut dependencies = flat::resolve::Libraries::default();
+    let mut dependencies = flat::Libraries::default();
     let mut error_cx = errors::ErrorCx::default();
     let mut srcs = source_file::FileMap::new();
     for lib_files in args.files {
