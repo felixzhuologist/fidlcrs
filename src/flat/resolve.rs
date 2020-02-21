@@ -311,16 +311,21 @@ fn resolve_names(
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+pub struct LibraryId(pub usize);
+
 // TODO: this will be its own module once it's fleshed out some more
 // TODO: keep track of unused dependencies
 #[derive(Default)]
 pub struct Libraries {
-    libraries: HashMap<String, Library>,
+    /// Topologically sorted list of Libraries
+    libraries: Vec<Library>,
+    name_to_id: HashMap<String, LibraryId>,
 }
 
 impl Libraries {
     pub fn contains_library(&self, library: &String) -> bool {
-        self.libraries.contains_key(library)
+        self.name_to_id.contains_key(library)
     }
 
     pub fn add_library(&mut self, lib: Library) -> Result<(), Error> {
@@ -328,19 +333,24 @@ impl Libraries {
 
         // TODO: extra copies
         let name = lib.name.clone();
-        if let Some(_) = self.libraries.insert(name.clone(), lib) {
+        let id = LibraryId(self.libraries.len());
+        if let Some(_) = self.name_to_id.insert(name.clone(), id) {
             // TODO: attach more information to this error?
-            Err(Error::DuplicateLibrary(name.clone()))
+            Err(Error::DuplicateLibrary(name))
         } else {
+            self.libraries.push(lib);
             Ok(())
         }
     }
 
     fn lookup(&self, lib_name: &String, var: &String, member: &Option<String>) -> Option<Span> {
-        self.libraries.get(lib_name).and_then(|lib| match member {
-            Some(member) => lib.lookup_nested(var, member),
-            None => lib.lookup(var),
-        })
+        self.name_to_id
+            .get(lib_name)
+            .map(|id| &self.libraries[id.0])
+            .and_then(|lib| match member {
+                Some(member) => lib.lookup_nested(var, member),
+                None => lib.lookup(var),
+            })
     }
 }
 
