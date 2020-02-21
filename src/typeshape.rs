@@ -12,7 +12,12 @@ pub enum Type {
     // Really, a DynVector is a vector, and a Vector is just a shortcut for
     // a DynVector with only one element type. We need DynVector to be able to
     // represent tables, where each element can be an Envelope of a different type.
+    // TODO: does a DynVector have bounds? technically the size if fixed for tables.
+    // TODO: if no bounds is specified, then we'd use u32::MAX here, which means
+    // certain operations will overflow. need to update to use saturating ops instead
     DynVector(Vec<Box<Type>>, u32),
+    // TODO: can a vector be expressed as an envelope<array>? since we only get max
+    // out of line
     Vector(Box<Type>, u32),
     Handle,
     Primitive(flat::PrimitiveSubtype),
@@ -271,4 +276,21 @@ fn object_align(size: u32) -> u32 {
 
 fn align_to(size: u32, alignment: u32) -> u32 {
     (size + (alignment - 1)) & !(alignment - 1)
+}
+
+// TODO: we do need Type::Identifier, in order to check for recursion here...
+// Conceptually FIDL will allow any type that can be expressed in the wire format,
+// which means that recursive types are OK if they can be finite. In other words,
+// it's OK to have an infinite upper bound, but not OK to have an infinite lower bound.
+// In practice, what can be expressed in any binding may be more restrictive.
+pub fn can_be_finite(ty: &Type) -> bool {
+    use Type::*;
+    match ty {
+        // add to a set of scene names. if it's already there, return false, otherwise, call
+        // can_be_finite recursively
+        // Identifier(_name) => unimplemented!(),
+        Product(members) | Sum(members) => members.iter().all(|m| can_be_finite(&*m)),
+        Array(ty, _) | Envelope(ty, false, _) => can_be_finite(&*ty),
+        Ptr(_) | Envelope(_, true, _) | DynVector(_, _) | Vector(_, _) | Handle | Primitive(_) => true,
+    }
 }
