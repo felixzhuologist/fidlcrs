@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 impl Library {
     // TODO: return errors
-    pub fn from_files(lib_cx: ResolverContext, deps: &Dependencies) -> Result<Library, Vec<Error>> {
+    pub fn from_files(lib_cx: ResolverContext, deps: &Libraries) -> Result<Library, Vec<Error>> {
         let ResolverContext {
             attributes,
             name,
@@ -129,14 +129,14 @@ impl Library {
 pub struct Resolver<'a> {
     pub imports: &'a mut FileImports,
     pub local_names: &'a UnresolvedScope,
-    pub deps: &'a Dependencies,
+    pub deps: &'a Libraries,
 }
 
 impl<'a> Resolver<'a> {
     pub fn new(
         imports: &'a mut FileImports,
         local_names: &'a UnresolvedScope,
-        deps: &'a Dependencies,
+        deps: &'a Libraries,
     ) -> Self {
         Resolver {
             imports,
@@ -314,11 +314,11 @@ fn resolve_names(
 // TODO: this will be its own module once it's fleshed out some more
 // TODO: keep track of unused dependencies
 #[derive(Default)]
-pub struct Dependencies {
+pub struct Libraries {
     libraries: HashMap<String, Library>,
 }
 
-impl Dependencies {
+impl Libraries {
     pub fn contains_library(&self, library: &String) -> bool {
         self.libraries.contains_key(library)
     }
@@ -364,11 +364,11 @@ pub struct FileImports {
 impl FileImports {
     // TODO: does it even make sense to return multiple errors here?
     // TODO: now that self.imports stores the spans, we could check the imports against
-    // the Dependencies separately, and make from_imports only take one parameter (which
+    // the Libraries separately, and make from_imports only take one parameter (which
     // would reduce test boilerplate)
     pub fn from_imports(
         imports: Vec<Spanned<raw::Import>>,
-        deps: &Dependencies,
+        deps: &Libraries,
     ) -> Result<FileImports, Vec<Error>> {
         // map from import name (either absolute or alias) to a tuple of (its span,
         // and if it's an alias, the full name of the library it aliases). it's easier
@@ -500,7 +500,7 @@ mod test {
 
     #[test]
     fn import_success() {
-        let mut deps = Dependencies::default();
+        let mut deps = Libraries::default();
         deps.add_library(Library::empty("foo".to_string())).unwrap();
         deps.add_library(Library::empty("bar".to_string())).unwrap();
         let contents = r#"library test;
@@ -514,7 +514,7 @@ using bar;
 
     #[test]
     fn import_dupe_no_alias() {
-        let mut deps = Dependencies::default();
+        let mut deps = Libraries::default();
         deps.add_library(Library::empty("foo".to_string())).unwrap();
         let contents = r#"library test;
 using foo;
@@ -536,7 +536,7 @@ using foo;
 
     #[test]
     fn import_dupe_aliases() {
-        let mut deps = Dependencies::default();
+        let mut deps = Libraries::default();
         deps.add_library(Library::empty("foo".to_string())).unwrap();
         let contents = r#"library test;
 using foo as bar;
@@ -558,7 +558,7 @@ using foo as baz;
 
     #[test]
     fn import_conflict() {
-        let mut deps = Dependencies::default();
+        let mut deps = Libraries::default();
         deps.add_library(Library::empty("foo".to_string())).unwrap();
         deps.add_library(Library::empty("bar".to_string())).unwrap();
         let contents = r#"library test;

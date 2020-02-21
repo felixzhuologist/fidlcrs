@@ -1,7 +1,7 @@
 //! Once everything is resolved, this does validation of the FIDL file, including things like
 //! type and kind checking
 use crate::flat;
-use crate::flat::resolve::Dependencies;
+use crate::flat::resolve::Libraries;
 use crate::flat::Library;
 
 // TODO: go in separate module?
@@ -9,11 +9,11 @@ pub enum Error {}
 
 pub struct Validator<'a> {
     lib: &'a Library,
-    deps: &'a Dependencies,
+    deps: &'a Libraries,
 }
 
 impl<'a> Validator<'a> {
-    pub fn new(lib: &'a Library, deps: &'a Dependencies) -> Self {
+    pub fn new(lib: &'a Library, deps: &'a Libraries) -> Self {
         Validator { lib, deps }
     }
 
