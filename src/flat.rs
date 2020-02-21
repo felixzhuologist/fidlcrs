@@ -306,7 +306,7 @@ pub enum HandleSubtype {
     Vmo,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum PrimitiveSubtype {
     Bool,
     Int8,

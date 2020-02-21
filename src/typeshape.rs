@@ -1,25 +1,52 @@
 use crate::flat;
 use crate::flat::PrimitiveSubtype::*;
-use crate::flat::Type;
-use crate::raw::Strictness;
+
+#[derive(Debug, Clone)]
+pub enum Type {
+    Product(Vec<Box<Type>>),
+    Sum(Vec<Box<Type>>),
+    /// Type the envelope contains, is_nullable, is_flexible
+    Envelope(Box<Type>, bool, bool),
+    Ptr(Box<Type>),
+    Array(Box<Type>, u32),
+    // Really, a DynVector is a vector, and a Vector is just a shortcut for
+    // a DynVector with only one element type. We need DynVector to be able to
+    // represent tables, where each element can be an Envelope of a different type.
+    DynVector(Vec<Box<Type>>, u32),
+    Vector(Box<Type>, u32),
+    Handle,
+    Primitive(flat::PrimitiveSubtype),
+}
+
+pub fn desugar(ty: &flat::Type) -> Type {
+    match ty {
+        flat::Type::Struct(val) => Type::Product(
+            val.members
+                .iter()
+                .map(|sp| Box::new(desugar(&*sp.value.ty.value)))
+                .collect(),
+        ),
+        flat::Type::Bits(val) => desugar(val.get_type()),
+        flat::Type::Enum(val) => desugar(val.get_type()),
+        flat::Type::Table(_) => unimplemented!(),
+        flat::Type::Union(_) => unimplemented!(),
+        flat::Type::Identifier(_) => unimplemented!(),
+        flat::Type::Ptr(ty) => Type::Ptr(Box::new(desugar(&*ty))),
+        flat::Type::Array(_) => unimplemented!(),
+        flat::Type::Vector(_) => unimplemented!(),
+        flat::Type::Str(_) => unimplemented!(),
+        flat::Type::Handle(_) | flat::Type::ClientEnd(_) | flat::Type::ServerEnd(_) => Type::Handle,
+        flat::Type::Primitive(subtype) => Type::Primitive(*subtype),
+
+        // should panic or return error
+        flat::Type::TypeSubstitution(_) | flat::Type::Int => unimplemented!(),
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 pub enum WireFormat {
     V1,
 }
-
-// #[derive(Debug, Clone)]
-// pub enum Type {
-//     Product(Vec<Box<Type>>);
-//     Sum(Vec<Box<Type>>);
-//     Envelope(Box<Type>);
-//     NNEnvelope(Box<Type>);
-//     Ptr(Box<Type>);
-//     Array(Box<Type>, u32);
-//     Vector(Box<Type> u32);
-//     Handle,
-//     Primitive(flat::PrimitiveSubtype),
-// }
 
 #[derive(Debug, Clone)]
 pub struct TypeShape {
@@ -78,344 +105,163 @@ pub fn typeshape(ty: &Type, wire_format: WireFormat) -> TypeShape {
 fn unaligned_size(ty: &Type, wire_format: WireFormat) -> u32 {
     use Type::*;
     match ty {
-        Struct(val) => {
-            if val.members.is_empty() {
+        Product(members) => {
+            if members.is_empty() {
                 return 1;
             }
-            val.members
+            members
                 .iter()
-                .map(|member| unaligned_size(&*member.value.ty.value, wire_format))
+                .map(|member| unaligned_size(&*member, wire_format))
                 .sum()
         }
-        Bits(val) => unaligned_size(val.get_type(), wire_format),
-        Enum(val) => unaligned_size(val.get_type(), wire_format),
-        // TODO: do this first, so we understand what else this function needs
-        Identifier(_) => unimplemented!(),
+        Sum(members) => members
+            .iter()
+            .map(|member| unaligned_size(&*member, wire_format))
+            .max()
+            .unwrap_or(1),
         Ptr(_) => 8,
-        Union(_) => 24,
-        Table(_) | Vector(_) | Str(_) => 16,
-        Array(flat::Array {
-            element_type: _,
-            size: _,
-        }) => unimplemented!(),
-        ClientEnd(_) | ServerEnd(_) | Handle(_) => 4,
+        Envelope(_, _, _) => 16,
+        DynVector(_, _) | Vector(_, _) => 16,
+        Array(ty, size) => unaligned_size(&*ty, wire_format) * size,
+        Handle => 4,
         Primitive(subtype) => match subtype {
             Bool | Int8 | UInt8 => 1,
             Int16 | UInt16 => 2,
             Int32 | UInt32 | Float32 => 4,
             Int64 | UInt64 | Float64 => 8,
         },
-        Int => panic!("untyped ints don't have a typeshape"),
-        // TODO: is this valid? maybe in the repl
-        TypeSubstitution(_) => unimplemented!(),
     }
 }
 
 fn alignment(ty: &Type, wire_format: WireFormat) -> u32 {
     use Type::*;
     match ty {
-        Struct(val) => {
-            if val.members.is_empty() {
-                return 1;
-            }
-            val.members
-                .iter()
-                .map(|member| alignment(&*member.value.ty.value, wire_format))
-                .max()
-                .unwrap()
-        }
-        Bits(val) => alignment(val.get_type(), wire_format),
-        Enum(val) => alignment(val.get_type(), wire_format),
-        // TODO: do this first, so we understand what else this function needs
-        Identifier(_) => unimplemented!(),
+        Sum(members) | Product(members) => members
+            .iter()
+            .map(|member| alignment(&*member, wire_format))
+            .max()
+            .unwrap_or(1),
         Ptr(_) => 8,
-        Union(_) => 8,
-        Table(_) | Vector(_) | Str(_) => 8,
-        Array(flat::Array {
-            element_type,
-            size: _,
-        }) => alignment(element_type.as_ref().unwrap(), wire_format),
-        ClientEnd(_) | ServerEnd(_) | Handle(_) => 4,
-        Primitive(_) => unaligned_size(ty, wire_format),
-        Int => panic!("untyped ints don't have a typeshape"),
-        // TODO: is this valid? maybe in the repl
-        TypeSubstitution(_) => unimplemented!(),
+        Envelope(_, _, _) => 8,
+        DynVector(_, _) | Vector(_, _) => 8,
+        Array(ty, _) => alignment(&*ty, wire_format),
+        Handle | Primitive(_) => unaligned_size(ty, wire_format),
     }
 }
 
 fn depth(ty: &Type, wire_format: WireFormat) -> u32 {
     use Type::*;
-    // TODO: handle recursion
     match ty {
-        Struct(val) => val
-            .members
+        Sum(members) | Product(members) => members
             .iter()
-            .map(|member| depth(&*member.value.ty.value, wire_format))
+            .map(|member| depth(&*member, wire_format))
             .max()
             .unwrap_or(0),
-        Table(val) => {
-            1 + val
-                .members
+        DynVector(members, _) => {
+            1 + members
                 .iter()
-                .map(|member| match &member.value.inner {
-                    flat::TableMemberInner::Reserved => 0,
-                    flat::TableMemberInner::Used {
-                        ty,
-                        name: _,
-                        default_value: _,
-                    } => depth(&*ty.value, wire_format),
-                })
+                .map(|member| depth(&*member, wire_format))
                 .max()
                 .unwrap_or(0)
         }
-        // do we want to model this as an envelope? if so how would that work?
-        Union(val) => {
-            1 + val
-                .members
-                .iter()
-                .map(|member| match &member.value.inner {
-                    flat::UnionMemberInner::Reserved => 0,
-                    flat::UnionMemberInner::Used { ty, name: _ } => depth(&*ty.value, wire_format),
-                })
-                .max()
-                .unwrap_or(0)
-        }
-        // TODO: do this first, so we understand what else this function needs
-        Identifier(_) => unimplemented!(),
-        Ptr(ty) => 1 + depth(&*ty, wire_format),
-        Str(_) => 1,
-        Vector(flat::Vector {
-            element_type,
-            bounds: _,
-        }) => 1 + depth(element_type.as_ref().unwrap(), wire_format),
-        Array(flat::Array {
-            element_type,
-            size: _,
-        }) => depth(element_type.as_ref().unwrap(), wire_format),
-        Bits(_) | Enum(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Primitive(_) => 0,
-        Int => panic!("untyped ints don't have a typeshape"),
-        // TODO: is this valid? maybe in the repl
-        TypeSubstitution(_) => unimplemented!(),
+        Envelope(ty, _, _) | Ptr(ty) | Vector(ty, _) | Array(ty, _) => 1 + depth(&*ty, wire_format),
+        Handle | Primitive(_) => 0,
     }
 }
 
 fn max_handles(ty: &Type, wire_format: WireFormat) -> u32 {
     use Type::*;
-    // TODO: handle recursion
     match ty {
-        Struct(val) => val
-            .members
+        DynVector(members, _) | Sum(members) | Product(members) => members
             .iter()
-            .map(|member| max_handles(&*member.value.ty.value, wire_format))
+            .map(|member| max_handles(&*member, wire_format))
             .sum::<u32>(),
-        Table(val) => val
-            .members
-            .iter()
-            .map(|member| match &member.value.inner {
-                flat::TableMemberInner::Reserved => 0,
-                flat::TableMemberInner::Used {
-                    ty,
-                    name: _,
-                    default_value: _,
-                } => max_handles(&*ty.value, wire_format),
-            })
-            .sum::<u32>(),
-        // do we want to model this as an envelope? if so how would that work?
-        Union(val) => val
-            .members
-            .iter()
-            .map(|member| match &member.value.inner {
-                flat::UnionMemberInner::Reserved => 0,
-                flat::UnionMemberInner::Used { ty, name: _ } => {
-                    max_handles(&*ty.value, wire_format)
-                }
-            })
-            .max()
-            .unwrap_or(0),
-        // TODO: do this first, so we understand what else this function needs
-        Identifier(_) => unimplemented!(),
-        Ptr(ty) => max_handles(&*ty, wire_format),
-        Str(_) => 0,
-        Vector(_) | Array(_) => unimplemented!(),
-        ClientEnd(_) | ServerEnd(_) | Handle(_) => 1,
-        Bits(_) | Enum(_) | Primitive(_) => 0,
-        Int => panic!("untyped ints don't have a typeshape"),
-        // TODO: is this valid? maybe in the repl
-        TypeSubstitution(_) => unimplemented!(),
+        Envelope(ty, _, _) | Vector(ty, _) | Array(ty, _) | Ptr(ty) => {
+            max_handles(&*ty, wire_format)
+        }
+        Primitive(_) => 0,
+        Handle => 1,
     }
 }
 
 fn max_out_of_line(ty: &Type, wire_format: WireFormat) -> u32 {
     use Type::*;
-    // TODO: handle recursion
     match ty {
-        Struct(val) => val
-            .members
+        Product(members) => members
             .iter()
-            .map(|member| max_out_of_line(&*member.value.ty.value, wire_format))
+            .map(|member| max_out_of_line(&*member, wire_format))
             .sum::<u32>(),
-        Table(val) => val
-            .members
+        Sum(members) => members
             .iter()
-            .map(|member| match &member.value.inner {
-                // TODO(fxb/35773) this excludes reserved table members from the OOL calculations
-                // which is incorrect
-                flat::TableMemberInner::Reserved => 0,
-                flat::TableMemberInner::Used {
-                    ty,
-                    name: _,
-                    default_value: _,
-                } => {
-                    object_align(unaligned_size(&*ty.value, wire_format))
-                        + max_out_of_line(&*ty.value, wire_format)
-                        + 16
-                }
-            })
-            .sum::<u32>(),
-        // do we want to model this as an envelope? if so how would that work?
-        Union(val) => val
-            .members
-            .iter()
-            .map(|member| match &member.value.inner {
-                flat::UnionMemberInner::Reserved => 0,
-                flat::UnionMemberInner::Used { ty, name: _ } => {
-                    object_align(unaligned_size(&*ty.value, wire_format))
-                        + max_out_of_line(&*ty.value, wire_format)
-                }
-            })
+            .map(|member| max_out_of_line(&*member, wire_format))
             .max()
             .unwrap_or(0),
-        // TODO: do this first, so we understand what else this function needs
-        Identifier(_) => unimplemented!(),
-        // TODO: do we want to check that some things can't be nullable at this step?
-        Ptr(ty) => unaligned_size(&*ty, wire_format) + max_out_of_line(&*ty, wire_format),
-        Str(_) => unimplemented!(),
-        Vector(_) => unimplemented!(),
-        Array(_) => unimplemented!(),
-        Bits(_) | Enum(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Primitive(_) => 0,
-        Int => panic!("untyped ints don't have a typeshape"),
-        // TODO: is this valid? maybe in the repl
-        TypeSubstitution(_) => unimplemented!(),
+        Vector(ty, bounds) => {
+            object_align(max_out_of_line(&*ty, wire_format)) * bounds
+                + object_align(unaligned_size(&*ty, wire_format)) * bounds
+        }
+        DynVector(members, _) => members
+            .iter()
+            .map(|member| {
+                object_align(
+                    max_out_of_line(&*member, wire_format)
+                        + object_align(unaligned_size(&*ty, wire_format)),
+                )
+            })
+            .sum::<u32>(),
+        Envelope(ty, _, _) | Ptr(ty) => {
+            unaligned_size(&*ty, wire_format) + max_out_of_line(&*ty, wire_format)
+        }
+        Array(ty, size) => max_out_of_line(&*ty, wire_format) * size,
+        Handle | Primitive(_) => 0,
     }
 }
 
 fn has_padding(ty: &Type, wire_format: WireFormat) -> bool {
     use Type::*;
     match ty {
-        Struct(val) => val
-            .members
+        Product(members) => members
             .iter()
-            .any(|member| has_padding(&*member.value.ty.value, wire_format)),
-        Table(val) => val.members.iter().any(|member| match &member.value.inner {
-            // TODO(fxb/35773) this excludes reserved table members from the OOL calculations
-            // which is incorrect
-            flat::TableMemberInner::Reserved => false,
-            flat::TableMemberInner::Used {
-                ty,
-                name: _,
-                default_value: _,
-            } => has_padding(&*ty.value, wire_format),
-        }),
+            .any(|member| has_padding(&*member, wire_format)),
         // TODO(fxb/36331)
-        Union(_) => true,
-        // TODO: do this first, so we understand what else this function needs
-        Identifier(_) => unimplemented!(),
-        Ptr(ty) => has_padding(&*ty, wire_format),
-        Str(_) => true,
-        Vector(_) => unimplemented!(),
-        Array(flat::Array {
-            element_type,
-            size: _,
-        }) => has_padding(element_type.as_ref().unwrap(), wire_format),
-        Bits(_) | Enum(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Primitive(_) => false,
-        Int => panic!("untyped ints don't have a typeshape"),
-        // TODO: is this valid? maybe in the repl
-        TypeSubstitution(_) => unimplemented!(),
+        Sum(_) => true,
+        // do envelopes inherently have padding?
+        Envelope(ty, _, _) | Array(ty, _) | Ptr(ty) => has_padding(&*ty, wire_format),
+        Vector(ty, _) => {
+            has_padding(&*ty, wire_format) || unaligned_size(&*ty, wire_format) % 8 != 0
+        }
+        DynVector(members, _) => members.iter().any(|member| {
+            has_padding(&*member, wire_format) || unaligned_size(&*member, wire_format) % 8 != 0
+        }),
+        Handle | Primitive(_) => false,
     }
 }
 
 fn has_flexible_envelope(ty: &Type, wire_format: WireFormat) -> bool {
     use Type::*;
     match ty {
-        Struct(val) => val
-            .members
+        DynVector(members, _) | Sum(members) | Product(members) => members
             .iter()
-            .any(|member| has_flexible_envelope(&*member.value.ty.value, wire_format)),
-        Table(val) => {
-            val.strictness() == Strictness::Flexible
-                || val.members.iter().any(|member| match &member.value.inner {
-                    flat::TableMemberInner::Reserved => false,
-                    flat::TableMemberInner::Used {
-                        ty,
-                        name: _,
-                        default_value: _,
-                    } => has_flexible_envelope(&*ty.value, wire_format),
-                })
-        }
-        Union(val) => {
-            val.strictness() == Strictness::Flexible
-                || val.members.iter().any(|member| match &member.value.inner {
-                    flat::UnionMemberInner::Reserved => false,
-                    flat::UnionMemberInner::Used { ty, name: _ } => {
-                        has_flexible_envelope(&*ty.value, wire_format)
-                    }
-                })
-        }
-        // TODO: do this first, so we understand what else this function needs
-        Identifier(_) => unimplemented!(),
-        // ??
-        Ptr(ty) => has_flexible_envelope(&*ty, wire_format),
-        Vector(flat::Vector {
-            element_type,
-            bounds: _,
-        })
-        | Array(flat::Array {
-            element_type,
-            size: _,
-        }) => has_padding(element_type.as_ref().unwrap(), wire_format),
-        Bits(_) | Enum(_) | Str(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Primitive(_) => {
-            false
-        }
-        Int => panic!("untyped ints don't have a typeshape"),
-        // TODO: is this valid? maybe in the repl
-        TypeSubstitution(_) => unimplemented!(),
+            .any(|member| has_flexible_envelope(&*member, wire_format)),
+        Vector(ty, _) | Array(ty, _) | Ptr(ty) => has_flexible_envelope(&*ty, wire_format),
+        Envelope(_, _, true) => true,
+        Envelope(ty, _, false) => has_flexible_envelope(&*ty, wire_format),
+        Handle | Primitive(_) => false,
     }
 }
 
 fn contains_union(ty: &Type, wire_format: WireFormat) -> bool {
     use Type::*;
     match ty {
-        Struct(val) => val
-            .members
+        DynVector(members, _) | Product(members) => members
             .iter()
-            .any(|member| contains_union(&*member.value.ty.value, wire_format)),
-        Table(val) => val.members.iter().any(|member| match &member.value.inner {
-            flat::TableMemberInner::Reserved => false,
-            flat::TableMemberInner::Used {
-                ty,
-                name: _,
-                default_value: _,
-            } => contains_union(&*ty.value, wire_format),
-        }),
-        Union(_) => true,
-        // TODO: do this first, so we understand what else this function needs
-        Identifier(_) => unimplemented!(),
-        // ??
-        Ptr(ty) => contains_union(&*ty, wire_format),
-        Vector(flat::Vector {
-            element_type,
-            bounds: _,
-        })
-        | Array(flat::Array {
-            element_type,
-            size: _,
-        }) => contains_union(element_type.as_ref().unwrap(), wire_format),
-        Bits(_) | Enum(_) | Str(_) | ClientEnd(_) | ServerEnd(_) | Handle(_) | Primitive(_) => {
-            false
+            .any(|member| contains_union(&*member, wire_format)),
+        // currently only a union can desugar to a sum
+        Sum(_) => true,
+        Envelope(ty, _, _) | Vector(ty, _) | Array(ty, _) | Ptr(ty) => {
+            contains_union(&*ty, wire_format)
         }
-        Int => panic!("untyped ints don't have a typeshape"),
-        // TODO: is this valid? maybe in the repl
-        TypeSubstitution(_) => unimplemented!(),
+        Handle | Primitive(_) => false,
     }
 }
 
