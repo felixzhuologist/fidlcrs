@@ -170,11 +170,11 @@ impl Param {
 // TODO: it seems like this will be a general "type checking" function that will
 // be called on every type, so it should be updated to not only do "kind" stuff
 // but also do other validation
-pub fn kind_check(ty: Spanned<&Type>, scope: &Libraries) -> Result<Kind, Error> {
+pub fn kind_check(ty: Spanned<&Type>, scope: &Libraries) -> Result<Kind, Vec<Error>> {
     match &ty.value {
         // TODO: need to support returning multiple errors first
         // Type::Struct(Struct { members }) => {
-            
+
         // }
         // NOTE: since there are no anonymous types yet, we don't need to recurse
         // here to check that member kinds are valid because that will be called
@@ -220,28 +220,43 @@ pub fn kind_check(ty: Spanned<&Type>, scope: &Libraries) -> Result<Kind, Error> 
                 Type::Identifier(name) => Some(scope.get_type(name)?.span),
                 _ => None,
             };
-            // TODO: we want to return both errors if there multiple. currently trying to
-            // sub both a layout and constraint into a concrete type will only error on the layout
-            // NOTE: we error if an argument is provided that is not supported by the func type,
-            // but don't if an argument that is "needed" is not provided (so we provide some
-            // "currying" like behavior to match fidlc's type constructors)
-            Ok(Kind {
-                layout: func_kind
-                    .layout
-                    .take(layout)
+
+            let mut errors = Vec::new();
+            let layout = func_kind
+                .layout
+                .take(layout)
+                .map_err(|_| Error::InvalidTypeParam {
+                    func_call: func.span,
+                    param: ParamType::Layout,
+                    func_def,
+                });
+            let constraints =
+                func_kind
+                    .constraints
+                    .take(constraint)
                     .map_err(|_| Error::InvalidTypeParam {
-                        func_call: func.span,
-                        param: ParamType::Layout,
-                        func_def,
-                    })?,
-                constraints: func_kind.constraints.take(constraint).map_err(|_| {
-                    Error::InvalidTypeParam {
                         func_call: func.span,
                         param: ParamType::Constraint,
                         func_def,
-                    }
-                })?,
-            })
+                    });
+            if let Err(err) = layout.clone() {
+                errors.push(err);
+            }
+            if let Err(err) = constraints.clone() {
+                errors.push(err);
+            }
+
+            // NOTE: we error if an argument is provided that is not supported by the func type,
+            // but don't if an argument that is "needed" is not provided (so we provide some
+            // "currying" like behavior to match fidlc's type constructors)
+            if errors.is_empty() {
+                Ok(Kind {
+                    layout: layout.unwrap(),
+                    constraints: constraints.unwrap(),
+                })
+            } else {
+                Err(errors)
+            }
         }
         _ => Ok(Kind::base_kind()),
     }
@@ -265,6 +280,12 @@ impl<'a> From<&'a Spanned<Type>> for Spanned<&'a Type> {
     fn from(ty: &'a Spanned<Type>) -> Self {
         let borrowed_inner = &ty.value;
         ty.span.wrap(borrowed_inner)
+    }
+}
+
+impl From<Error> for Vec<Error> {
+    fn from(err: Error) -> Self {
+        vec![err]
     }
 }
 
