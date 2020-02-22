@@ -298,6 +298,7 @@ CommaSeparatedNonEmpty<T>: Vec<Spanned<T>> = {
     }
 }
 
+#[inline]
 SemicolonSeparated<T>: Vec<Spanned<T>> = {
     (<Spanned<T>> ";")*,
 };
@@ -314,6 +315,7 @@ IntLiteral: IntLiteral = {
     int_literal => IntLiteral{ value: <>.0, is_negative: <>.1 }
 };
 
+#[inline]
 Spanned<T>: Spanned<T> = {
     <l: @L> <v: T> <r: @R> => span::spanned(file_id, l, r, v)
 };
