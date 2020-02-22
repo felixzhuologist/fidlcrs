@@ -1,8 +1,12 @@
-use super::errors::{Error, RawName};
+pub mod errors;
+mod visitor;
+
 use super::*;
 use crate::flatten::{lookup, ResolverContext, UnresolvedScope};
 use crate::lexer::Span;
 use crate::raw;
+use crate::raw::Spanned;
+use errors::{Error, RawName};
 // use crate::raw::Spanned;
 use std::collections::HashMap;
 
@@ -177,8 +181,11 @@ impl<'a> Resolver<'a> {
         spanned: Spanned<Box<raw::Type>>,
     ) -> Result<Spanned<Type>, Error> {
         spanned.try_map(|ty| {
-            let target_type = get_builtin_type(&ty.name)
-                .unwrap_or(Type::Identifier(self.resolve_name(ty.name)?.value));
+            // there's probably some way to use unwrap_or_else here
+            let target_type = match get_builtin_type(&ty.name) {
+                Some(val) => val,
+                None => Type::Identifier(self.resolve_name(ty.name)?.value),
+            };
 
             let inner = if ty.layout.is_some() || ty.constraint.is_some() {
                 Type::TypeSubstitution(TypeSubstitution {

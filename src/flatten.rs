@@ -3,13 +3,26 @@
 //! Unlike flat:: it operates on unresolved Files, and unlike raw:: it
 //! processes multiple Files and accumulates internal state.
 
-use crate::errors::{two_spans_to_snippet, ErrText};
+use crate::errors::{two_spans_to_snippet, ErrText, ErrorCx};
 use crate::lexer::Span;
 use crate::raw;
 use crate::raw::{Attributes, FidlType, File, LibraryName};
 use crate::source_file::FileMap;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Snippet};
 use std::collections::HashMap;
+
+pub fn flatten_files(srcs: &FileMap, snippets: &mut ErrorCx, files: Vec<File>) -> ResolverContext {
+    let mut flattener = Flattener::default();
+    for file in files {
+        flattener.add_file(file);
+    }
+
+    let (lib_ctx, errors) = flattener.finish();
+    for error in errors {
+        snippets.push(error.into_snippet(srcs));
+    }
+    lib_ctx
+}
 
 pub type UnresolvedScope = HashMap<String, NameDef>;
 

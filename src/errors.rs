@@ -14,6 +14,10 @@ pub struct ErrorCx {
     errors: Vec<Snippet>,
 }
 
+// TODO: this is kind of useless and just forwarding calls to the underlying
+// Vec. maybe it should just be removed and use Vec directly, and print_errors
+// can be a func
+
 impl ErrorCx {
     pub fn print_errors(self) {
         let formatter = DisplayListFormatter::new(true, false);
@@ -27,8 +31,16 @@ impl ErrorCx {
         });
     }
 
-    pub fn add_error(&mut self, error: Snippet) {
+    pub fn push(&mut self, error: Snippet) {
         self.errors.push(error);
+    }
+
+    pub fn extend(&mut self, errors: Vec<Snippet>) {
+        self.errors.extend(errors);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.errors.is_empty()
     }
 }
 

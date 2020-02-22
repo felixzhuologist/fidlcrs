@@ -1,10 +1,6 @@
 use crate::span;
 use std::fmt;
 
-pub mod attributes;
-pub mod errors;
-pub mod validate;
-
 pub type Spanned<T> = span::Spanned<T, usize>;
 
 // The natural thing that lalrpop wants to parse is a Vec<Spanned<String>>,

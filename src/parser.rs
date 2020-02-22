@@ -1,17 +1,44 @@
+use crate::errors::ErrorCx;
 use crate::grammar;
 use crate::lexer;
 use crate::raw;
-use crate::source_file::SourceFile;
+use crate::source_file::{FileMap, SourceFile};
 use crate::span::{FileId, Span};
 use crate::token::Token;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 use lalrpop_util;
 use std::fmt;
+use std::fs::File;
+use std::io::Read;
 
-pub fn parse(src: &SourceFile) -> Result<raw::File, Error> {
+pub fn parse_files(srcs: &mut FileMap, errors: &mut ErrorCx, paths: Vec<String>) -> Vec<raw::File> {
+    let mut files = Vec::new();
+    for path in paths {
+        let raw_contents = read_file(&path);
+        let src_file = srcs.add_file(path, raw_contents);
+        match parse(src_file) {
+            Ok(file) => files.push(file),
+            Err(err) => errors.push(err.into_snippet(&src_file)),
+        }
+    }
+    files
+}
+
+fn parse(src: &SourceFile) -> Result<raw::File, Error> {
     grammar::FileParser::new()
         .parse(src.id, lexer::Lexer::new(src.id, src.contents()))
         .map_err(|err| err.into())
+}
+
+fn read_file(path: &String) -> String {
+    let file = File::open(path);
+    assert!(file.is_ok(), "Could not open file: {}", path);
+
+    let mut contents = String::new();
+    let read_result = file.unwrap().read_to_string(&mut contents);
+    assert!(read_result.is_ok(), "Could not read file: {}", path);
+
+    contents.replace('\r', "")
 }
 
 // TODO: follow rustc's parse error format:

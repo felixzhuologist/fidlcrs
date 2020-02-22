@@ -5,11 +5,6 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt;
 
-pub mod errors;
-pub mod resolve;
-pub mod validate;
-pub mod visitor;
-
 #[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
 pub struct LibraryId(pub usize);
 
@@ -18,7 +13,7 @@ pub struct LibraryId(pub usize);
 #[derive(Default)]
 pub struct Libraries {
     /// Topologically sorted list of Libraries
-    libraries: Vec<Library>,
+    pub libraries: Vec<Library>,
     name_to_id: HashMap<String, LibraryId>,
 }
 
@@ -35,21 +30,22 @@ impl Libraries {
         self.libraries[id.0].name.clone()
     }
 
-    pub fn add_library(&mut self, lib: Library) -> Result<(), errors::Error> {
+    // TODO: should this error be in resolve?
+    pub fn add_library(&mut self, lib: Library) -> Result<(), super::resolve::errors::Error> {
         // validate::validate_library(&lib, &self);
 
         // TODO: extra copies
         let name = lib.name.clone();
         if let Some(_) = self.name_to_id.insert(name.clone(), self.next_library_id()) {
             // TODO: attach more information to this error?
-            Err(errors::Error::DuplicateLibrary(name))
+            Err(super::resolve::errors::Error::DuplicateLibrary(name))
         } else {
             self.libraries.push(lib);
             Ok(())
         }
     }
 
-    fn lookup(&self, lib_name: &String, var: &String, member: &Option<String>) -> Option<Span> {
+    pub fn lookup(&self, lib_name: &String, var: &String, member: &Option<String>) -> Option<Span> {
         self.name_to_id
             .get(lib_name)
             .map(|id| &self.libraries[id.0])
@@ -404,6 +400,14 @@ pub struct TypeSubstitution {
     pub layout: Option<Spanned<Box<Type>>>,
     pub constraint: Option<Spanned<Box<Term>>>,
 }
+
+// =====================================================================================
+// =====================================================================================
+// =====================================================================================
+// TODO: experimental code below, which will be repurposed and used somewhere or removed
+// =====================================================================================
+// =====================================================================================
+// =====================================================================================
 
 // pub trait TypeScope {
 //     type Type;
