@@ -3,7 +3,6 @@ use crate::raw::{Attributes, IntLiteral, Spanned, Strictness};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::fmt;
 
 #[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
 pub struct LibraryId(pub usize);
@@ -93,7 +92,6 @@ pub type TermEntry = (Attributes, Spanned<Type>, Spanned<Term>);
 pub type TypeScope = HashMap<String, Spanned<TypeEntry>>;
 pub type TermScope = HashMap<String, Spanned<TermEntry>>;
 
-// TODO: should this be in resolve instead?
 #[derive(Default)]
 pub struct Library {
     pub attributes: Attributes,
@@ -114,6 +112,9 @@ pub enum Term {
     True,
     False,
 }
+
+// TODO: use Spanned<Box<Type>> in all recursive cases to simplify function
+// signatures?
 
 // TODO: is it better to have these variants defined separately? or should they
 // be inline on the enum?
@@ -323,6 +324,9 @@ pub struct ServiceMember {
     pub name: Spanned<String>,
 }
 
+// TODO: .name can actually be an Id, since after resolution it's guaranteed
+// to exist. we would just need to make sure they're unique across all sorts
+// (maybe every value should be stored in an Entry enum?)
 #[derive(Debug, Clone)]
 pub struct Name {
     pub library: LibraryId,
@@ -391,7 +395,8 @@ pub struct Str {
     pub bounds: Option<Box<Term>>,
 }
 
-// NOTE: the either layout or constraint should be Some, otherwise this would just be flattened
+// TODO: s/constraint/constraints to be consistent?
+// NOTE: either layout or constraint will be Some, otherwise this would just be flattened
 // directly into `func`
 /// Substitute layout and constraint into the func type, e.g. func<layout>:constraint
 #[derive(Debug, Clone)]
@@ -429,67 +434,10 @@ pub struct TypeSubstitution {
 //     Undefined(Name)
 // }
 
-// #[derive(Debug, Copy, Clone)]
-// pub enum Kind {
-//     NeedsLayoutAndConstraints,
-//     NeedsLayout,
-//     NeedsConstraints,
-//     Type,
-//     // this kind is unique, in that a type of this kind is considered "concrete" or "closed",
-//     // (i.e. it can be used as the type of a member), but it can also take in a parameter to
-//     // return another kind
-//     // TODO: think about how this should work some more
-//     CanTakeConstraints,
-//     NeedsLayoutCanTakeConstraints,
-// }
-
-// the "Kind enum" would essentially be the 2^3 possible combinations of these booleans
-#[derive(Debug, Copy, Clone)]
-pub struct Kind {
-    pub needs_layout: bool,
-    // this currently isn't possible in FIDL? though i suppose a handle optionally takes
-    // a layout parameter
-    // pub can_take_layout: bool,
-    pub needs_constraints: bool,
-    pub can_take_constraints: bool,
-}
-
-impl Kind {
-    pub fn base_type() -> Kind {
-        Kind {
-            needs_layout: false,
-            needs_constraints: false,
-            can_take_constraints: false,
-        }
-    }
-
-    pub fn is_concrete(&self) -> bool {
-        !self.needs_layout && !self.needs_constraints
-    }
-}
-
-impl fmt::Display for Kind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match (
-            self.needs_layout,
-            self.needs_constraints,
-            self.can_take_constraints,
-        ) {
-            (false, false, false) => write!(f, "Type"),
-            (false, false, true) => write!(f, "Constraint? -> Type"),
-            (false, true, _) => write!(f, "Constraint -> Type"),
-            (true, false, false) => write!(f, "Layout -> Type"),
-            (true, false, true) => write!(f, "(Layout, Constraint?) -> Type"),
-            (true, true, _) => write!(f, "(Layout, Constraint) -> Type"),
-        }
-    }
-}
-
 // this concept should be merged with Scope?
 pub trait Namespace {
     fn lookup_term(&self, name: &Name) -> Option<&Term>;
     fn lookup_ty(&self, name: &Name) -> Option<&Type>;
-    fn lookup_kind(&self, name: &Name) -> Option<&Kind>;
 }
 
 pub fn eval<T: Namespace>(term: &Term, scope: &T) -> Result<Term, Name> {
@@ -615,79 +563,6 @@ pub fn eval_ty<T: Namespace>(ty: &Type, scope: &T) -> Result<Type, Name> {
         // ClientEnd(_),
         // ServerEnd(_)
         _ => Ok(ty.clone()),
-    }
-}
-
-pub fn kind_check<T: Namespace>(ty: &Type, scope: &T) -> Result<Kind, Name> {
-    match ty {
-        // TODO: finish implementing, and also share this code.
-        Type::Struct(val) => {
-            let _are_members_valid = val
-                .members
-                .iter()
-                .map(|spanned| kind_check(&spanned.value.ty.value, scope))
-                .collect::<Result<Vec<_>, _>>()?
-                .iter()
-                .all(|kind| kind.is_concrete());
-            unimplemented!()
-        }
-        Type::Bits(_) => unimplemented!(),
-        Type::Enum(_) => unimplemented!(),
-        Type::Table(_) => unimplemented!(),
-        Type::Union(_) => unimplemented!(),
-        Type::Ptr(_) => unimplemented!(),
-        Type::Identifier(name) => match scope.lookup_kind(name) {
-            Some(kind) => Ok(*kind),
-            None => Err(name.clone()),
-        },
-        Type::Array(Array { element_type, size }) => Ok(Kind {
-            needs_layout: element_type.is_none(),
-            needs_constraints: size.is_none(),
-            can_take_constraints: false,
-        }),
-        Type::Vector(Vector {
-            element_type,
-            bounds,
-        }) => Ok(Kind {
-            needs_layout: element_type.is_none(),
-            needs_constraints: false,
-            can_take_constraints: bounds.is_none(),
-        }),
-        Type::Str(Str { bounds }) => Ok(Kind {
-            needs_layout: false,
-            needs_constraints: false,
-            can_take_constraints: bounds.is_none(),
-        }),
-        // TODO: do we want to check that they refer to actual protocols? this isn't really a "kind"
-        // check... but it is a check that the type is valid.
-        Type::ClientEnd(_) => unimplemented!(),
-        Type::ServerEnd(_) => unimplemented!(),
-        Type::TypeSubstitution(TypeSubstitution {
-            func,
-            layout,
-            constraint,
-        }) => {
-            let func_kind = kind_check(func, scope)?;
-            // TODO: we return errors here. we may want to distinguish between the 3 error cases
-            // (already has layout, already has constraints, already has both)
-            if !func_kind.needs_layout && layout.is_some() {
-                unimplemented!()
-            } else if !(func_kind.needs_constraints || func_kind.can_take_constraints)
-                && constraint.is_some()
-            {
-                unimplemented!()
-            } else {
-                // NOTE: we error if an argument is provided that is not supported by the func type,
-                // but don't if an argument that is "needed" is not provided (so we provide some
-                // "currying" like behavior to match fidlc's type constructors)
-                Ok(Kind {
-                    needs_layout: func_kind.needs_layout && layout.is_none(),
-                    needs_constraints: func_kind.needs_constraints && constraint.is_none(),
-                    can_take_constraints: func_kind.can_take_constraints && constraint.is_none(),
-                })
-            }
-        }
-        _ => Ok(Kind::base_type()),
     }
 }
 

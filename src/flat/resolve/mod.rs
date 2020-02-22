@@ -1,3 +1,5 @@
+// TODO: flat::tree::Libraries needs DuplicateLibraryError, but maybe that should
+// go somewhere else
 pub mod errors;
 mod visitor;
 

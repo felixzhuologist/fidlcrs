@@ -1,6 +1,8 @@
-pub mod attributes;
+mod attributes;
+// TODO: flatten shares these errors. maybe move into raw?
 pub mod errors;
 mod tree;
+// TODO: flatten also needs attribute validation
 pub mod validate;
 
 pub use tree::*;
