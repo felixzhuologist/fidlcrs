@@ -182,7 +182,9 @@ impl<'a> Resolver<'a> {
         &mut self,
         spanned: Spanned<Box<raw::Type>>,
     ) -> Result<Spanned<Type>, Error> {
+        let outer_span = spanned.span;
         spanned.try_map(|ty| {
+            let name_span = ty.name.span;
             // there's probably some way to use unwrap_or_else here
             let target_type = match get_builtin_type(&ty.name) {
                 Some(val) => val,
@@ -191,7 +193,7 @@ impl<'a> Resolver<'a> {
 
             let inner = if ty.layout.is_some() || ty.constraint.is_some() {
                 Type::TypeSubstitution(TypeSubstitution {
-                    func: Box::new(target_type),
+                    func: name_span.wrap(Box::new(target_type)),
                     // TODO: allow return possibly both errors
                     layout: ty
                         .layout
@@ -206,7 +208,14 @@ impl<'a> Resolver<'a> {
                 target_type
             };
             if ty.nullable {
-                Ok(Type::Ptr(Box::new(inner)))
+                // the span of the thing inside the ptr, is just the ptr's span
+                // without the ? at the end (i.e. subtract 1 from its end)
+                let inner_span = Span {
+                    file: outer_span.file,
+                    start: outer_span.start,
+                    end: outer_span.end - 1,
+                };
+                Ok(Type::Ptr(inner_span.wrap(Box::new(inner))))
             } else {
                 Ok(inner)
             }

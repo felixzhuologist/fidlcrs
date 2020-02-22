@@ -104,7 +104,10 @@ pub struct Kind {
 
 impl Kind {
     pub fn base_kind() -> Kind {
-        Kind { layout: Param::None, constraints: Param::None }
+        Kind {
+            layout: Param::None,
+            constraints: Param::None,
+        }
     }
 
     pub fn is_concrete(&self) -> bool {
@@ -127,11 +130,19 @@ pub enum Param {
 
 impl Param {
     pub fn required<T>(val: &Option<T>) -> Param {
-        if val.is_some() { Param::None } else { Param::Required }
+        if val.is_some() {
+            Param::None
+        } else {
+            Param::Required
+        }
     }
 
     pub fn optional<T>(val: &Option<T>) -> Param {
-        if val.is_some() { Param::None } else { Param::Optional }
+        if val.is_some() {
+            Param::None
+        } else {
+            Param::Optional
+        }
     }
 
     // substitute this Option into this Param
@@ -144,7 +155,7 @@ impl Param {
             // param can't take any values but there is no value
             (Param::None, None) => Ok(Param::None),
             // param can take a value but there's no value
-            (param, None) => Ok(param)
+            (param, None) => Ok(param),
         }
     }
 

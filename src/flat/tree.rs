@@ -128,7 +128,7 @@ pub enum Type {
     Table(Table),
     Union(Union),
     Identifier(Name),
-    Ptr(Box<Type>),
+    Ptr(Spanned<Box<Type>>),
     Array(Array),
     Vector(Vector),
     // Note: a `string` is just a `vector<uint8>`, but gets its own variant in the
@@ -380,19 +380,19 @@ pub enum PrimitiveSubtype {
 
 #[derive(Debug, Clone)]
 pub struct Array {
-    pub element_type: Option<Box<Type>>,
-    pub size: Option<Box<Term>>,
+    pub element_type: Option<Spanned<Box<Type>>>,
+    pub size: Option<Spanned<Box<Term>>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Vector {
-    pub element_type: Option<Box<Type>>,
-    pub bounds: Option<Box<Term>>,
+    pub element_type: Option<Spanned<Box<Type>>>,
+    pub bounds: Option<Spanned<Box<Term>>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Str {
-    pub bounds: Option<Box<Term>>,
+    pub bounds: Option<Spanned<Box<Term>>>,
 }
 
 // TODO: s/constraint/constraints to be consistent?
@@ -401,7 +401,7 @@ pub struct Str {
 /// Substitute layout and constraint into the func type, e.g. func<layout>:constraint
 #[derive(Debug, Clone)]
 pub struct TypeSubstitution {
-    pub func: Box<Type>,
+    pub func: Spanned<Box<Type>>,
     pub layout: Option<Spanned<Box<Type>>>,
     pub constraint: Option<Spanned<Box<Term>>>,
 }
@@ -534,9 +534,9 @@ pub fn eval_ty<T: Namespace>(ty: &Type, scope: &T) -> Result<Type, Name> {
             } = sub;
             // we can simplify this if we assume that kind checking passed before
             // calling eval_ty
-            let layout_arg = layout.clone().map(|spanned| spanned.value);
-            let constraint_arg = constraint.clone().map(|spanned| spanned.value);
-            match eval_ty(func, scope)? {
+            let layout_arg = layout.clone();
+            let constraint_arg = constraint.clone();
+            match eval_ty(&func.value, scope)? {
                 Type::Array(Array {
                     ref element_type,
                     ref size,

@@ -5,7 +5,10 @@ use annotate_snippets::snippet::Snippet;
 
 #[derive(Debug, Clone)]
 pub enum Error {
-    SortError { expected: Sort, actual: Sort },
+    SortError {
+        expected: Sort,
+        actual: Sort,
+    },
 
     // these kind errors can essentially be merged into a single
     // UnexpectedKind { expected, actual } error, though mentioning kinds to users

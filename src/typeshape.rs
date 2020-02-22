@@ -23,6 +23,7 @@ pub enum Type {
     Primitive(flat::PrimitiveSubtype),
 }
 
+// TODO: this should probably take a Spanned<Box<Type>>
 pub fn desugar(ty: &flat::Type) -> Type {
     match ty {
         flat::Type::Struct(val) => Type::Product(
@@ -36,7 +37,8 @@ pub fn desugar(ty: &flat::Type) -> Type {
         flat::Type::Table(_) => unimplemented!(),
         flat::Type::Union(_) => unimplemented!(),
         flat::Type::Identifier(_) => unimplemented!(),
-        flat::Type::Ptr(ty) => Type::Ptr(Box::new(desugar(&*ty))),
+        // flat::Type::Ptr(ty) => Type::Ptr(Box::new(desugar(&*ty))),
+        flat::Type::Ptr(_) => unimplemented!(),
         flat::Type::Array(_) => unimplemented!(),
         flat::Type::Vector(_) => unimplemented!(),
         flat::Type::Str(_) => unimplemented!(),

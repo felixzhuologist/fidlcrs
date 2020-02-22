@@ -24,7 +24,7 @@ pub fn parse_files(srcs: &mut FileMap, errors: &mut ErrorCx, paths: Vec<String>)
     files
 }
 
-fn parse(src: &SourceFile) -> Result<raw::File, Error> {
+pub fn parse(src: &SourceFile) -> Result<raw::File, Error> {
     grammar::FileParser::new()
         .parse(src.id, lexer::Lexer::new(src.id, src.contents()))
         .map_err(|err| err.into())
