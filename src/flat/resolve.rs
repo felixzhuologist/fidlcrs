@@ -177,11 +177,12 @@ impl<'a> Resolver<'a> {
         spanned: Spanned<Box<raw::Type>>,
     ) -> Result<Spanned<Type>, Error> {
         spanned.try_map(|ty| {
-            // the type that is being aliased
-            let target_name = self.resolve_name(ty.name)?.value;
+            let target_type = get_builtin_type(&ty.name)
+                .unwrap_or(Type::Identifier(self.resolve_name(ty.name)?.value));
+
             let inner = if ty.layout.is_some() || ty.constraint.is_some() {
                 Type::TypeSubstitution(TypeSubstitution {
-                    func: Box::new(Type::Identifier(target_name)),
+                    func: Box::new(target_type),
                     // TODO: allow return possibly both errors
                     layout: ty
                         .layout
@@ -193,7 +194,7 @@ impl<'a> Resolver<'a> {
                         .transpose()?,
                 })
             } else {
-                Type::Identifier(target_name)
+                target_type
             };
             if ty.nullable {
                 Ok(Type::Ptr(Box::new(inner)))
@@ -216,8 +217,7 @@ impl<'a> Resolver<'a> {
                     name: name_str.clone(),
                     member: None,
                 };
-                // TODO: flatten builtins
-                if is_builtin(&name_str) || self.local_names.contains_key(&name_str) {
+                if self.local_names.contains_key(&name_str) {
                     Ok(span.wrap(name))
                 } else {
                     Err(Error::UndefinedLocal(span))
@@ -470,13 +470,39 @@ impl FileImports {
     }
 }
 
-// TODO: this should probably go somewhere else? also we want to prevent users
-// from naming variables things that are in here
-pub fn is_builtin(var: &String) -> bool {
-    match var.as_str() {
-        "bool" | "uint8" | "uint16" | "uint32" | "uint64" | "int8" | "int16" | "int32"
-        | "int64" | "float32" | "float64" | "string" | "vector" | "byte" | "bytes" => true,
-        _ => false,
+pub fn get_builtin_type(var: &raw::CompoundIdentifier) -> Option<Type> {
+    if var.value.len() != 1 {
+        return None;
+    }
+    use PrimitiveSubtype::*;
+    match var.value[0].as_str() {
+        "bool" => Some(Type::Primitive(Bool)),
+        "uint8" => Some(Type::Primitive(UInt8)),
+        "uint16" => Some(Type::Primitive(UInt16)),
+        "uint32" => Some(Type::Primitive(UInt32)),
+        "uint64" => Some(Type::Primitive(UInt64)),
+        "int8" => Some(Type::Primitive(Int8)),
+        "int16" => Some(Type::Primitive(Int16)),
+        "int32" => Some(Type::Primitive(Int32)),
+        "int64" => Some(Type::Primitive(Int64)),
+        "float32" => Some(Type::Primitive(Float32)),
+        "float64" => Some(Type::Primitive(Float64)),
+        "string" => Some(Type::Str(Str { bounds: None })),
+        "vector" => Some(Type::Vector(Vector {
+            element_type: None,
+            bounds: None,
+        })),
+        "array" => Some(Type::Array(Array {
+            element_type: None,
+            size: None,
+        })),
+        // TODO: handle subtype and protocol Name need to be optional
+        "handle" => unimplemented!(),
+        "request" => unimplemented!(),
+
+        "byte" => unimplemented!(),
+        "bytes" => unimplemented!(),
+        _ => None,
     }
 }
 
