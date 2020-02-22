@@ -172,6 +172,10 @@ impl Param {
 // but also do other validation
 pub fn kind_check(ty: Spanned<&Type>, scope: &Libraries) -> Result<Kind, Error> {
     match &ty.value {
+        // TODO: need to support returning multiple errors first
+        // Type::Struct(Struct { members }) => {
+            
+        // }
         // NOTE: since there are no anonymous types yet, we don't need to recurse
         // here to check that member kinds are valid because that will be called
         // by top level validate eventually as it iterates through the scope. if
@@ -182,14 +186,15 @@ pub fn kind_check(ty: Spanned<&Type>, scope: &Libraries) -> Result<Kind, Error> 
         }
         // TODO: check that it can be nullable
         Type::Ptr(ty) => kind_check(ty.into(), scope),
-        // TODO: this can be cached
+        // TODO: this can be cached: we can have a map from Name to Result<Kind, Error>.
+        // would need to be careful not to return the same error multiple times
         Type::Identifier(name) => kind_check(scope.get_type(name)?.into(), scope),
         Type::Array(Array { element_type, size }) => Ok(Kind {
             layout: Param::required(element_type),
             constraints: Param::required(size),
         }),
-        // TODO: recursively check the element type and bounds? for checking the
-        // term, would we just want to make sure that its type is numeric?
+        // TODO: once type check is implemented, we want to ensure that `bounds`
+        // has a numeric type
         Type::Vector(Vector {
             element_type,
             bounds,
@@ -201,10 +206,10 @@ pub fn kind_check(ty: Spanned<&Type>, scope: &Libraries) -> Result<Kind, Error> 
             layout: Param::None,
             constraints: Param::optional(bounds),
         }),
-        // TODO: do we want to check that they refer to actual protocols? this isn't really a "kind"
-        // check... but it is a check that the type is valid.
-        Type::ClientEnd(_) => unimplemented!(),
-        Type::ServerEnd(_) => unimplemented!(),
+        Type::ClientEnd(name) | Type::ServerEnd(name) => {
+            scope.get_protocol(name)?;
+            Ok(Kind::base_kind())
+        }
         Type::TypeSubstitution(TypeSubstitution {
             func,
             layout,
