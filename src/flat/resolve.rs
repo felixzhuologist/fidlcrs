@@ -1,6 +1,6 @@
-use super::errors::Error;
+use super::errors::{Error, RawName};
 use super::*;
-use crate::flatten::{get_local_member, ResolverContext, UnresolvedScope};
+use crate::flatten::{lookup, ResolverContext, UnresolvedScope};
 use crate::lexer::Span;
 use crate::raw;
 // use crate::raw::Spanned;
@@ -212,10 +212,11 @@ impl<'a> Resolver<'a> {
                 // this must be referring to a top level value in the local context
                 let name_str = name.into_iter().next().unwrap();
                 let name = Name {
-                    library: None,
+                    library: self.lib_id(),
                     name: name_str.clone(),
                     member: None,
                 };
+                // TODO: flatten builtins
                 if is_builtin(&name_str) || self.local_names.contains_key(&name_str) {
                     Ok(span.wrap(name))
                 } else {
@@ -226,88 +227,109 @@ impl<'a> Resolver<'a> {
                 // if there are two components a.b, this can refer to two things:
                 // decl b in library a (`dep_value`), or member b of decl a in the
                 // local library (`local_value`).
-                let local_value = {
-                    let name = Name {
-                        library: None,
-                        name: name.first().unwrap().clone(),
-                        member: Some(name.last().unwrap().clone()),
-                    };
-                    let maybe_span = get_local_member(
-                        self.local_names,
-                        &name.name,
-                        &name.member.as_ref().unwrap(),
-                    );
-                    (name, maybe_span)
+                let local_value = RawName {
+                    library: None,
+                    name: name.first().unwrap().clone(),
+                    member: Some(name.last().unwrap().clone()),
                 };
-                let dep_value = {
-                    let mut name = Name {
-                        library: Some(name.first().unwrap().clone()),
-                        name: name.last().unwrap().clone(),
-                        member: None,
-                    };
-                    let maybe_span = self.dep_lookup(&mut name);
-                    (name, maybe_span)
+                let dep_value = RawName {
+                    library: Some(name.first().unwrap().clone()),
+                    name: name.last().unwrap().clone(),
+                    member: None,
                 };
-                resolve_names(span, local_value, dep_value)
+                self.resolve_names(span, local_value, dep_value)
             }
             _ => {
                 // if there are more than two components, this can't refer to a local value.
                 // it must either refer to a member or top level value in a dependency
-                let member_val = {
-                    let mut name = Name {
-                        library: Some(name[..name.len() - 2].join(".")),
-                        name: name[name.len() - 2].clone(),
-                        member: Some(name[name.len() - 1].clone()),
-                    };
-                    let maybe_span = self.dep_lookup(&mut name);
-                    (name, maybe_span)
+                let member_val = RawName {
+                    library: Some(name[..name.len() - 2].join(".")),
+                    name: name[name.len() - 2].clone(),
+                    member: Some(name[name.len() - 1].clone()),
                 };
-                let toplevel_val = {
-                    let mut name = Name {
-                        library: Some(name[..name.len() - 1].join(".")),
-                        name: name[name.len() - 1].clone(),
-                        member: None,
-                    };
-                    let maybe_span = self.dep_lookup(&mut name);
-                    (name, maybe_span)
+                let toplevel_val = RawName {
+                    library: Some(name[..name.len() - 1].join(".")),
+                    name: name[name.len() - 1].clone(),
+                    member: None,
                 };
-                resolve_names(span, member_val, toplevel_val)
+                self.resolve_names(span, member_val, toplevel_val)
             }
         }
     }
 
-    // any name lookup in the dependencies should go through these methods, so that
-    // import usage can be tracked
-    // TODO: clean up unwraps
-    fn dep_lookup(&mut self, name: &mut Name) -> Option<Span> {
-        assert!(
-            name.library.is_some(),
-            "dep_lookup() needs a library specified"
-        );
-        name.library = Some(self.imports.get_absolute(&name.library.as_ref().unwrap()));
-        self.imports.mark_used(&name.library.as_ref().unwrap());
-
-        self.deps
-            .lookup(&name.library.as_ref().unwrap(), &name.name, &name.member)
+    fn resolve_names(
+        &mut self,
+        span: Span,
+        interp1: RawName,
+        interp2: RawName,
+    ) -> Result<Spanned<Name>, Error> {
+        match (
+            self.resolve_raw_name(interp1),
+            self.resolve_raw_name(interp2),
+        ) {
+            (Ok((span1, name1)), Ok((span2, name2))) => Err(Error::AmbiguousReference {
+                span,
+                interp1: span1.wrap(self.to_raw(name1)),
+                interp2: span2.wrap(self.to_raw(name2)),
+            }),
+            (Ok((_, name1)), Err(_)) => Ok(span.wrap(name1)),
+            (Err(_), Ok((_, name2))) => Ok(span.wrap(name2)),
+            (Err(name1), Err(name2)) => Err(Error::Undefined(span, name1, name2)),
+        }
     }
-}
 
-fn resolve_names(
-    span: Span,
-    interp1: (Name, Option<Span>),
-    interp2: (Name, Option<Span>),
-) -> Result<Spanned<Name>, Error> {
-    let (name1, span1) = interp1;
-    let (name2, span2) = interp2;
-    match (span1, span2) {
-        (Some(span1), Some(span2)) => Err(Error::AmbiguousReference {
-            span,
-            interp1: span1.wrap(name1),
-            interp2: span2.wrap(name2),
-        }),
-        (Some(_), None) => Ok(span.wrap(name1)),
-        (None, Some(_)) => Ok(span.wrap(name2)),
-        (None, None) => Err(Error::Undefined(span, name1, name2)),
+    fn resolve_raw_name(&mut self, name: RawName) -> Result<(Span, Name), RawName> {
+        match &name.library {
+            None => match lookup(&self.local_names, &name.name, &name.member) {
+                Some(span) => Ok((
+                    span,
+                    Name {
+                        library: self.lib_id(),
+                        name: name.name,
+                        member: name.member,
+                    },
+                )),
+                None => Err(name),
+            },
+            Some(ref lib_name) => {
+                let lib_name = self.imports.get_absolute(lib_name);
+                self.imports.mark_used(&lib_name);
+                match self.deps.lookup(&lib_name, &name.name, &name.member) {
+                    Some(span) => Ok((
+                        span,
+                        Name {
+                            // it must exist if lookup returned Some
+                            library: self.deps.get_id(&lib_name).unwrap(),
+                            name: name.name,
+                            member: name.member,
+                        },
+                    )),
+                    None => Err(RawName {
+                        library: Some(lib_name),
+                        name: name.name,
+                        member: name.member,
+                    }),
+                }
+            }
+        }
+    }
+
+    fn lib_id(&self) -> LibraryId {
+        self.deps.next_library_id()
+    }
+
+    // need to convert back to RawName when we want to display the Name in case of
+    // errors
+    fn to_raw(&self, name: Name) -> RawName {
+        RawName {
+            library: if name.library == self.lib_id() {
+                None
+            } else {
+                Some(self.deps.get_name(name.library))
+            },
+            name: name.name,
+            member: name.member,
+        }
     }
 }
 

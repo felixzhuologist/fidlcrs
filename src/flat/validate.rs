@@ -1,7 +1,7 @@
 //! Once everything is resolved, this does validation of the FIDL file, including things like
 //! type and kind checking
 use crate::flat;
-use crate::flat::{Library, Libraries};
+use crate::flat::{Libraries, Library};
 
 // TODO: go in separate module?
 pub enum Error {}

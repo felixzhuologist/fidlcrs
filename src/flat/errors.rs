@@ -1,4 +1,3 @@
-use super::Name;
 use crate::errors::{span_to_snippet, three_spans_to_snippet, two_spans_to_snippet, ErrText};
 use crate::lexer::Span;
 use crate::raw::Spanned;
@@ -30,14 +29,14 @@ pub enum Error {
     // resolution errors
     /// No definition was found for the variable referenced at Span
     UndefinedLocal(Span),
-    Undefined(Span, Name, Name),
+    Undefined(Span, RawName, RawName),
     /// The reference found at `span` is ambiguous, and can be interpreted as
     /// either `interp1` or `interp2`. Note that the Spans for the two interpretations
     /// correpond to where the referee is defined, not where the reference is located
     AmbiguousReference {
         span: Span,
-        interp1: Spanned<Name>,
-        interp2: Spanned<Name>,
+        interp1: Spanned<RawName>,
+        interp2: Spanned<RawName>,
     },
 
     /// Two libraries were provided that have the same name
@@ -199,7 +198,18 @@ impl Error {
     }
 }
 
-impl fmt::Display for Name {
+// This is a Name, but where the library field is a raw string instead of a resolved
+// library ID. This is used as an intermediate state between when we interpret a
+// raw::CompoundIdentifier and fully resolve it to a Name. Names are also converted
+// back to a RawName when we want to display it
+#[derive(Debug, Clone)]
+pub struct RawName {
+    pub library: Option<String>,
+    pub name: String,
+    pub member: Option<String>,
+}
+
+impl fmt::Display for RawName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let lib_str = match &self.library {
             Some(lib) => format!("library {}", lib),

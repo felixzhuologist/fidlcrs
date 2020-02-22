@@ -27,13 +27,20 @@ impl Libraries {
         self.name_to_id.contains_key(library)
     }
 
+    pub fn get_id(&self, library: &String) -> Option<LibraryId> {
+        self.name_to_id.get(library).map(|l| *l)
+    }
+
+    pub fn get_name(&self, id: LibraryId) -> String {
+        self.libraries[id.0].name.clone()
+    }
+
     pub fn add_library(&mut self, lib: Library) -> Result<(), errors::Error> {
         // validate::validate_library(&lib, &self);
 
         // TODO: extra copies
         let name = lib.name.clone();
-        let id = LibraryId(self.libraries.len());
-        if let Some(_) = self.name_to_id.insert(name.clone(), id) {
+        if let Some(_) = self.name_to_id.insert(name.clone(), self.next_library_id()) {
             // TODO: attach more information to this error?
             Err(errors::Error::DuplicateLibrary(name))
         } else {
@@ -50,6 +57,12 @@ impl Libraries {
                 Some(member) => lib.lookup_nested(var, member),
                 None => lib.lookup(var),
             })
+    }
+
+    // Libraries are fully constructed before being added here, so they need to know what
+    // ID they're going to have during Name resolution
+    pub fn next_library_id(&self) -> LibraryId {
+        LibraryId(self.libraries.len())
     }
 }
 
@@ -316,7 +329,7 @@ pub struct ServiceMember {
 
 #[derive(Debug, Clone)]
 pub struct Name {
-    pub library: Option<String>,
+    pub library: LibraryId,
     pub name: String,
     pub member: Option<String>,
 }

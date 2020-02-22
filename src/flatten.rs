@@ -18,14 +18,14 @@ pub struct NameDef {
     inner_scope: Option<HashMap<String, Span>>,
 }
 
-pub fn get_local_member(scope: &UnresolvedScope, name: &String, member: &String) -> Option<Span> {
+/// Analogous to Libraries.lookup(), but for the library currently being resolved
+pub fn lookup(scope: &UnresolvedScope, name: &String, member: &Option<String>) -> Option<Span> {
     match scope.get(name) {
-        Some(NameDef {
-            span: _,
-            inner_scope: Some(scope),
-        }) => match scope.get(member) {
-            Some(span) => Some(*span),
-            _ => None,
+        Some(NameDef { span, inner_scope }) => match member {
+            Some(member) => inner_scope
+                .as_ref()
+                .map_or(None, |scope| scope.get(member).map(|m| *m)),
+            None => Some(*span),
         },
         _ => None,
     }
