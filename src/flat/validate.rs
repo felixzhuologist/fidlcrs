@@ -1,57 +1,49 @@
 //! Once everything is resolved, this does validation of the FIDL file, including things like
 //! type and kind checking
 use crate::flat;
-use crate::flat::{Libraries, Library};
+use crate::flat::Libraries;
 
 // TODO: go in separate module?
 pub enum Error {}
 
-pub struct Validator<'a> {
-    lib: &'a Library,
-    deps: &'a Libraries,
-}
-
-impl<'a> Validator<'a> {
-    pub fn new(lib: &'a Library, deps: &'a Libraries) -> Self {
-        Validator { lib, deps }
-    }
-
-    pub fn validate(&self) {
-        for _term in self.lib.terms.values() {
+impl Libraries {
+    pub fn validate_latest(&self) {
+        let lib = self.libraries.last().unwrap();
+        for _term in lib.terms.values() {
             // term.validate(self);
         }
-        for _ty in self.lib.types.values() {
+        for _ty in lib.types.values() {
             // ty.validate(self);
         }
-        for _protocol in self.lib.protocols.values() {
+        for _protocol in lib.protocols.values() {
             // protocol.validate(self);
         }
-        for _service in self.lib.services.values() {
+        for _service in lib.services.values() {
             // service.validate(self);
         }
     }
 }
 
 impl flat::Term {
-    pub fn validate(&self, _validator: &Validator) {
+    pub fn validate(&self, _scope: &Libraries) {
         unimplemented!()
     }
 }
 
 impl flat::Type {
-    pub fn validate(&self, _validator: &Validator) {
+    pub fn validate(&self, _scope: &Libraries) {
         unimplemented!()
     }
 }
 
 impl flat::Protocol {
-    pub fn validate(&self, _validator: &Validator) {
+    pub fn validate(&self, _scope: &Libraries) {
         unimplemented!()
     }
 }
 
 impl flat::Service {
-    pub fn validate(&self, _validator: &Validator) {
+    pub fn validate(&self, _scope: &Libraries) {
         unimplemented!()
     }
 }
