@@ -16,7 +16,10 @@ pub enum Error {
     InvalidTypeParam {
         func_call: Span,
         param: ParamType,
-        func_def: Span,
+        // this Span is optional since it only makes sense to provide it if `func`
+        // is a user defined type. If it's a builtin (or, eventually, if it's an
+        // inline/anonymous type), the func call span will include the definition
+        func_def: Option<Span>,
     },
     NonConcreteType {
         span: Span,

@@ -167,83 +167,101 @@ impl Param {
     }
 }
 
-// // TODO: it seems like this will be a general "type checking" function that will
-// // be called on every type, so it should be updated to not only do "kind" stuff
-// // but also do other validation
-// pub fn kind_check(ty: &Spanned<Type>, scope: &Libraries) -> Result<Kind, Error> {
-//     match &ty.value {
-//         // NOTE: since there are no anonymous types yet, we don't need to recurse
-//         // here to check that member kinds are valid because that will be called
-//         // by top level validate eventually as it iterates through the scope. if
-//         // we wanted this to be a full recursive kind check instead of just at the
-//         // top level, we could cache the results
-//         Type::Struct(_) |
-//         Type::Bits(_) |
-//         Type::Enum(_) |
-//         Type::Table(_) |
-//         Type::Union(_) => Ok(Kind::base_kind()),
-//         // TODO: check that it can be nullable
-//         // Type::Ptr(ref ty) => kind_check(ty, scope),
-//         // TODO: make recursive type/term field types consistent
-//         Type::Ptr(ref ty) => unimplemented!(),
-//         // TODO: this can be cached
-//         Type::Identifier(name) => kind_check(scope.get_type(name)?, scope),
-//         Type::Array(Array { element_type, size }) => Ok(Kind {
-//             layout: Param::required(element_type),
-//             constraints: Param::required(size),
-//         }),
-//         // TODO: recursively check the element type and bounds? for checking the
-//         // term, would we just want to make sure that its type is numeric?
-//         Type::Vector(Vector {
-//             element_type,
-//             bounds,
-//         }) => Ok(Kind {
-//             layout: Param::required(element_type),
-//             constraints: Param::optional(bounds),
-//         }),
-//         Type::Str(Str { bounds }) => Ok(Kind {
-//             layout: Param::None,
-//             constraints: Param::optional(bounds),
-//         }),
-//         // TODO: do we want to check that they refer to actual protocols? this isn't really a "kind"
-//         // check... but it is a check that the type is valid.
-//         Type::ClientEnd(_) => unimplemented!(),
-//         Type::ServerEnd(_) => unimplemented!(),
-//         Type::TypeSubstitution(TypeSubstitution {
-//             func,
-//             layout,
-//             constraint,
-//         }) => {
-//             // TODO: make recursive type/term field types consistent
-//             // let func_kind = kind_check(func, scope)?;
-//             let func_kind: Kind = unimplemented!();
+// TODO: it seems like this will be a general "type checking" function that will
+// be called on every type, so it should be updated to not only do "kind" stuff
+// but also do other validation
+pub fn kind_check(ty: Spanned<&Type>, scope: &Libraries) -> Result<Kind, Error> {
+    match &ty.value {
+        // NOTE: since there are no anonymous types yet, we don't need to recurse
+        // here to check that member kinds are valid because that will be called
+        // by top level validate eventually as it iterates through the scope. if
+        // we wanted this to be a full recursive kind check instead of just at the
+        // top level, we could cache the results
+        Type::Struct(_) | Type::Bits(_) | Type::Enum(_) | Type::Table(_) | Type::Union(_) => {
+            Ok(Kind::base_kind())
+        }
+        // TODO: check that it can be nullable
+        Type::Ptr(ty) => kind_check(ty.into(), scope),
+        // TODO: this can be cached
+        Type::Identifier(name) => kind_check(scope.get_type(name)?.into(), scope),
+        Type::Array(Array { element_type, size }) => Ok(Kind {
+            layout: Param::required(element_type),
+            constraints: Param::required(size),
+        }),
+        // TODO: recursively check the element type and bounds? for checking the
+        // term, would we just want to make sure that its type is numeric?
+        Type::Vector(Vector {
+            element_type,
+            bounds,
+        }) => Ok(Kind {
+            layout: Param::required(element_type),
+            constraints: Param::optional(bounds),
+        }),
+        Type::Str(Str { bounds }) => Ok(Kind {
+            layout: Param::None,
+            constraints: Param::optional(bounds),
+        }),
+        // TODO: do we want to check that they refer to actual protocols? this isn't really a "kind"
+        // check... but it is a check that the type is valid.
+        Type::ClientEnd(_) => unimplemented!(),
+        Type::ServerEnd(_) => unimplemented!(),
+        Type::TypeSubstitution(TypeSubstitution {
+            func,
+            layout,
+            constraint,
+        }) => {
+            let func_kind = kind_check(func.into(), scope)?;
+            let func_def = match &*func.value {
+                Type::Identifier(name) => Some(scope.get_type(name)?.span),
+                _ => None,
+            };
+            // TODO: we want to return both errors if there multiple. currently trying to
+            // sub both a layout and constraint into a concrete type will only error on the layout
+            // NOTE: we error if an argument is provided that is not supported by the func type,
+            // but don't if an argument that is "needed" is not provided (so we provide some
+            // "currying" like behavior to match fidlc's type constructors)
+            Ok(Kind {
+                layout: func_kind
+                    .layout
+                    .take(layout)
+                    .map_err(|_| Error::InvalidTypeParam {
+                        func_call: func.span,
+                        param: ParamType::Layout,
+                        func_def,
+                    })?,
+                constraints: func_kind.constraints.take(constraint).map_err(|_| {
+                    Error::InvalidTypeParam {
+                        func_call: func.span,
+                        param: ParamType::Constraint,
+                        func_def,
+                    }
+                })?,
+            })
+        }
+        _ => Ok(Kind::base_kind()),
+    }
+}
 
-//             // TODO: we want to return both errors if there multiple. currently trying to
-//             // sub both a layout and constraint into a concrete type will only error on the layout
+// TODO: these Froms are kind of gnarly, but i'm not sure there's a way around them right now:
+// kind_check is going to be called from 2 places: recursively on a flat::Type, which will always
+// be a Spanned<Box<Type>>, but it will also be called on a type fetched from the scope which is
+// a &Spanned<Type>. I wasn't able to pick one and get it to work, but both of these types can
+// be converted to Spanned<&Type> so that is currently the input type of kind_check. The other
+// constraint is that we want this function to borrow it's input spanned type and avoid copying.
 
-//             // NOTE: we error if an argument is provided that is not supported by the func type,
-//             // but don't if an argument that is "needed" is not provided (so we provide some
-//             // "currying" like behavior to match fidlc's type constructors)
-//             Ok(Kind {
-//                 layout: func_kind.layout
-//                     .take(layout)
-//                     .map_err(|_| Error::InvalidTypeParam {
-//                         func_call: unimplemented!(),
-//                         param: ParamType::Layout,
-//                         func_def: unimplemented!()
-//                     })?,
-//                 constraints: func_kind.constraints
-//                     .take(constraint)
-//                     .map_err(|_| Error::InvalidTypeParam {
-//                         func_call: unimplemented!(),
-//                         param: ParamType::Constraint,
-//                         func_def: unimplemented!(),
-//                     })?,
-//             })
-//         }
-//         _ => Ok(Kind::base_kind()),
-//     }
-// }
+impl<'a> From<&'a Spanned<Box<Type>>> for Spanned<&'a Type> {
+    fn from(ty: &'a Spanned<Box<Type>>) -> Self {
+        let borrowed_inner = &ty.value;
+        ty.span.wrap(borrowed_inner)
+    }
+}
+
+impl<'a> From<&'a Spanned<Type>> for Spanned<&'a Type> {
+    fn from(ty: &'a Spanned<Type>) -> Self {
+        let borrowed_inner = &ty.value;
+        ty.span.wrap(borrowed_inner)
+    }
+}
 
 // impl fmt::Display for Kind {
 //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
