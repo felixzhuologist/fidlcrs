@@ -514,8 +514,19 @@ pub fn get_builtin_type(var: &raw::CompoundIdentifier) -> Option<Type> {
             element_type: None,
             size: None,
         })),
-        // TODO: handle subtype and protocol Name need to be optional
+        // TODO: we want to handle "handle" specially and resolve
+        // them directly in resolve_type, instead of using a TypeSubstitution.
+        // this is because a handle subtype isn't a valid type, so we don't want
+        // users to be able to do using mything = vmo; myhandle = handle<mything>;
+        // this should be its own error.
         "handle" => unimplemented!(),
+        // TODO: implement client_end and server_end in the grammar as in FTP-50
+        // which will make things much easier. otherwise, it'd be impossible to check
+        // things here because we don't know what sort a name has yet. maybe we want
+        // to store Sort as well as Span in the unresolved scope? that way we can
+        // return sort errors here directly.
+        // then, we'd need to handle this specially in kind_check to avoid getting
+        // a sort error when checking the arg to a client/server end.
         "request" => unimplemented!(),
 
         "byte" => unimplemented!(),
