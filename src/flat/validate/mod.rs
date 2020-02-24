@@ -128,7 +128,7 @@ fn _kind_check(
                 for (n, _) in seen.iter() {
                     cache.insert(n.clone(), Kind::Any);
                 }
-                return Err(Error::AliasCycle(seen).into());
+                return Err(Error::VarCycle(seen).into());
             }
             // NOTE: once Name is refactored just contain IDs, it can implement Copy and we won't
             // need to clone explicitly here
@@ -204,6 +204,8 @@ fn _kind_check(
                 }
             }
         }
+        // TODO: think about this some more
+        Type::Any => Ok(Kind::Any),
         _ => Ok(Kind::base_kind()),
     }
 }
@@ -215,15 +217,15 @@ fn _kind_check(
 // be converted to Spanned<&Type> so that is currently the input type of kind_check. The other
 // constraint is that we want this function to borrow it's input spanned type and avoid copying.
 
-impl<'a> From<&'a Spanned<Box<Type>>> for Spanned<&'a Type> {
-    fn from(ty: &'a Spanned<Box<Type>>) -> Self {
+impl<'a, T> From<&'a Spanned<Box<T>>> for Spanned<&'a T> {
+    fn from(ty: &'a Spanned<Box<T>>) -> Self {
         let borrowed_inner = &ty.value;
         ty.span.wrap(borrowed_inner)
     }
 }
 
-impl<'a> From<&'a Spanned<Type>> for Spanned<&'a Type> {
-    fn from(ty: &'a Spanned<Type>) -> Self {
+impl<'a, T> From<&'a Spanned<T>> for Spanned<&'a T> {
+    fn from(ty: &'a Spanned<T>) -> Self {
         let borrowed_inner = &ty.value;
         ty.span.wrap(borrowed_inner)
     }
@@ -251,3 +253,44 @@ impl From<Error> for Vec<Error> {
 //         }
 //     }
 // }
+
+pub fn type_check(
+    term: Spanned<&Term>,
+    scope: &Libraries,
+    cache: &mut HashMap<Name, Type>,
+) -> Result<Type, Error> {
+    let seen = Vec::new();
+    _type_check(term, scope, cache, seen)
+}
+
+pub fn _type_check(
+    term: Spanned<&Term>,
+    scope: &Libraries,
+    cache: &mut HashMap<Name, Type>,
+    mut seen: Vec<(Name, Span)>,
+) -> Result<Type, Error> {
+    match &term.value {
+        Term::Identifier(name) => {
+            if let Some(ty) = cache.get(name) {
+                return Ok(ty.clone());
+            }
+
+            if seen.iter().any(|(n, _)| n == name) {
+                // update the scope so that this error doesn't get recomputed
+                for (n, _) in seen.iter() {
+                    cache.insert(n.clone(), Type::Any);
+                }
+                return Err(Error::VarCycle(seen).into());
+            }
+            // NOTE: once Name is refactored just contain IDs, it can implement Copy and we won't
+            // need to clone explicitly here
+            seen.push((name.clone(), term.span));
+            _type_check(scope.get_term(name)?.into(), scope, cache, seen)
+        }
+        Term::Str(_) => Ok(Type::Str(Str { bounds: None })),
+        // TODO: think about this some more
+        Term::Int(_) => Ok(Type::Int),
+        Term::Float(_) => Ok(Type::Primitive(PrimitiveSubtype::Float64)),
+        Term::True | Term::False => Ok(Type::Primitive(PrimitiveSubtype::Bool)),
+    }
+}

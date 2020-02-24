@@ -46,7 +46,7 @@ pub fn desugar(ty: &flat::Type) -> Type {
         flat::Type::Primitive(subtype) => Type::Primitive(*subtype),
 
         // should panic or return error
-        flat::Type::TypeSubstitution(_) | flat::Type::Int => unimplemented!(),
+        flat::Type::Any | flat::Type::TypeSubstitution(_) | flat::Type::Int => unimplemented!(),
     }
 }
 

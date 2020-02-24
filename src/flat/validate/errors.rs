@@ -26,7 +26,7 @@ pub enum Error {
         missing: Vec<ParamType>,
     },
 
-    AliasCycle(Vec<(Name, Span)>),
+    VarCycle(Vec<(Name, Span)>),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -39,7 +39,7 @@ impl Error {
     pub fn into_snippet(self, _srcs: &FileMap) -> Snippet {
         use Error::*;
         match self {
-            AliasCycle(_cycle) => {
+            VarCycle(_cycle) => {
                 // note: the top level error name will be the last name, since
                 // the first element in the vector is the rhs of the first type
                 // that caused this error

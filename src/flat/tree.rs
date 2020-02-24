@@ -149,6 +149,7 @@ pub enum Type {
     // it should be (e.g. in const uint8 = 3)
     // TODO: this is only relevant for the REPL, and we may want to remove it
     Int,
+    Any,
 }
 
 #[derive(Debug, Clone)]
