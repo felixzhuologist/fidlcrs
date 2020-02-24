@@ -121,25 +121,25 @@ fn _kind_check(
             seen.push((name.clone(), ty.span));
             _kind_check(scope.get_type(name)?.into(), scope, seen)
         }
-        Type::Array(Array { element_type, size }) => Ok(Kind {
+        Type::Array(Array { element_type, size }) => Ok(Kind::Kind {
             layout: Param::required(element_type),
             constraints: Param::required(size),
         }),
         Type::Vector(Vector {
             element_type,
             bounds,
-        }) => Ok(Kind {
+        }) => Ok(Kind::Kind {
             layout: Param::required(element_type),
             constraints: Param::optional(bounds),
         }),
-        Type::Str(Str { bounds }) => Ok(Kind {
+        Type::Str(Str { bounds }) => Ok(Kind::Kind {
             layout: Param::None,
             constraints: Param::optional(bounds),
         }),
         Type::TypeSubstitution(TypeSubstitution {
             func,
-            layout,
-            constraint,
+            layout: layout_param,
+            constraint: constraint_param,
         }) => {
             let func_kind = _kind_check(func.into(), scope, seen)?;
             let func_def = match &*func.value {
@@ -147,41 +147,47 @@ fn _kind_check(
                 _ => None,
             };
 
-            let mut errors = Vec::new();
-            let layout = func_kind
-                .layout
-                .take(layout)
-                .map_err(|_| Error::InvalidTypeParam {
-                    func_call: func.span,
-                    param: ParamType::Layout,
-                    func_def,
-                });
-            let constraints =
-                func_kind
-                    .constraints
-                    .take(constraint)
-                    .map_err(|_| Error::InvalidTypeParam {
-                        func_call: func.span,
-                        param: ParamType::Constraint,
-                        func_def,
-                    });
-            if let Err(err) = layout.clone() {
-                errors.push(err);
-            }
-            if let Err(err) = constraints.clone() {
-                errors.push(err);
-            }
+            match func_kind {
+                Kind::Any => Ok(Kind::Any),
+                Kind::Kind {
+                    layout,
+                    constraints,
+                } => {
+                    let mut errors = Vec::new();
+                    let layout = layout
+                        .take(layout_param)
+                        .map_err(|_| Error::InvalidTypeParam {
+                            func_call: func.span,
+                            param: ParamType::Layout,
+                            func_def,
+                        });
+                    let constraints =
+                        constraints
+                            .take(constraint_param)
+                            .map_err(|_| Error::InvalidTypeParam {
+                                func_call: func.span,
+                                param: ParamType::Constraint,
+                                func_def,
+                            });
+                    if let Err(err) = layout.clone() {
+                        errors.push(err);
+                    }
+                    if let Err(err) = constraints.clone() {
+                        errors.push(err);
+                    }
 
-            // NOTE: we error if an argument is provided that is not supported by the func type,
-            // but don't if an argument that is "needed" is not provided (so we provide some
-            // "currying" like behavior to match fidlc's type constructors)
-            if errors.is_empty() {
-                Ok(Kind {
-                    layout: layout.unwrap(),
-                    constraints: constraints.unwrap(),
-                })
-            } else {
-                Err(errors)
+                    // NOTE: we error if an argument is provided that is not supported by the func type,
+                    // but don't if an argument that is "needed" is not provided (so we provide some
+                    // "currying" like behavior to match fidlc's type constructors)
+                    if errors.is_empty() {
+                        Ok(Kind::Kind {
+                            layout: layout.unwrap(),
+                            constraints: constraints.unwrap(),
+                        })
+                    } else {
+                        Err(errors)
+                    }
+                }
             }
         }
         _ => Ok(Kind::base_kind()),

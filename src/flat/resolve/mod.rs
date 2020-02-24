@@ -527,7 +527,8 @@ pub fn get_builtin_type(var: &raw::CompoundIdentifier) -> Option<Type> {
         // return sort errors here directly.
         // then, we'd need to handle this specially in kind_check to avoid getting
         // a sort error when checking the arg to a client/server end.
-        "request" => unimplemented!(),
+        "server_end" => unimplemented!(),
+        "client_end" => unimplemented!(),
 
         "byte" => unimplemented!(),
         "bytes" => unimplemented!(),

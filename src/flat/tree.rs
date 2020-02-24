@@ -411,24 +411,22 @@ pub struct TypeSubstitution {
     pub constraint: Option<Spanned<Box<Term>>>,
 }
 
-// The set of possible Kinds would essentially be the 2^3 possible combinations
-// of these booleans, which is a bit excessive to represent as an enum
 #[derive(Debug, Copy, Clone)]
-pub struct Kind {
-    pub layout: Param,
-    pub constraints: Param,
+pub enum Kind {
+    /// The top kind which is valid in any context. It's used to as the kind for
+    /// types that are not well defined/errored, so that validation can continue
+    /// while ensuring that the same error isn't returned multiple times
+    Any,
+    /// A regular Kind, which is defined in terms of its layout/constraints params
+    Kind { layout: Param, constraints: Param },
 }
 
 impl Kind {
     pub fn base_kind() -> Kind {
-        Kind {
+        Kind::Kind {
             layout: Param::None,
             constraints: Param::None,
         }
-    }
-
-    pub fn is_concrete(&self) -> bool {
-        self.layout.needs_value() && self.constraints.needs_value()
     }
 }
 
