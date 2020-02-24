@@ -4,6 +4,7 @@ mod errors;
 mod visitor;
 
 use crate::flat::*;
+use crate::lexer::Span;
 use crate::raw::Spanned;
 use errors::{Error, ParamType};
 
@@ -167,34 +168,36 @@ impl Param {
     }
 }
 
-// TODO: it seems like this will be a general "type checking" function that will
-// be called on every type, so it should be updated to not only do "kind" stuff
-// but also do other validation
+// TODO: this can be cached: we can have a map from Name to Result<Kind, Error>.
+// would need to be careful not to return the same error multiple times - one
+// way to do this is the value for an errored type is just a "top" kind, so that
+// any type that refers to that type can interpret it as any kind it wants. in the
+// case of an alias cycle, we would want to store the error once and mark the other
+// types in the cycle
 pub fn kind_check(ty: Spanned<&Type>, scope: &Libraries) -> Result<Kind, Vec<Error>> {
-    match &ty.value {
-        // TODO: need to support returning multiple errors first
-        // Type::Struct(Struct { members }) => {
+    let seen = Vec::new();
+    _kind_check(ty, scope, seen)
+}
 
-        // }
-        // NOTE: since there are no anonymous types yet, we don't need to recurse
-        // here to check that member kinds are valid because that will be called
-        // by top level validate eventually as it iterates through the scope. if
-        // we wanted this to be a full recursive kind check instead of just at the
-        // top level, we could cache the results
-        Type::Struct(_) | Type::Bits(_) | Type::Enum(_) | Type::Table(_) | Type::Union(_) => {
-            Ok(Kind::base_kind())
+fn _kind_check(
+    ty: Spanned<&Type>,
+    scope: &Libraries,
+    mut seen: Vec<(Name, Span)>,
+) -> Result<Kind, Vec<Error>> {
+    match &ty.value {
+        Type::Identifier(name) => {
+            if seen.iter().any(|(n, _)| n == name) {
+                return Err(Error::AliasCycle(seen).into());
+            }
+            // NOTE: once Name is refactored just contain IDs, it can implement Copy and we won't
+            // need to clone explicitly here
+            seen.push((name.clone(), ty.span));
+            _kind_check(scope.get_type(name)?.into(), scope, seen)
         }
-        // TODO: check that it can be nullable
-        Type::Ptr(ty) => kind_check(ty.into(), scope),
-        // TODO: this can be cached: we can have a map from Name to Result<Kind, Error>.
-        // would need to be careful not to return the same error multiple times
-        Type::Identifier(name) => kind_check(scope.get_type(name)?.into(), scope),
         Type::Array(Array { element_type, size }) => Ok(Kind {
             layout: Param::required(element_type),
             constraints: Param::required(size),
         }),
-        // TODO: once type check is implemented, we want to ensure that `bounds`
-        // has a numeric type
         Type::Vector(Vector {
             element_type,
             bounds,
@@ -206,16 +209,12 @@ pub fn kind_check(ty: Spanned<&Type>, scope: &Libraries) -> Result<Kind, Vec<Err
             layout: Param::None,
             constraints: Param::optional(bounds),
         }),
-        Type::ClientEnd(name) | Type::ServerEnd(name) => {
-            scope.get_protocol(name)?;
-            Ok(Kind::base_kind())
-        }
         Type::TypeSubstitution(TypeSubstitution {
             func,
             layout,
             constraint,
         }) => {
-            let func_kind = kind_check(func.into(), scope)?;
+            let func_kind = _kind_check(func.into(), scope, seen)?;
             let func_def = match &*func.value {
                 Type::Identifier(name) => Some(scope.get_type(name)?.span),
                 _ => None,

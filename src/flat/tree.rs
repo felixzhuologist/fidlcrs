@@ -127,6 +127,8 @@ pub enum Type {
     Enum(Enum),
     Table(Table),
     Union(Union),
+    // TODO: this is redundant. we can merge TypeSubstitution and
+    // Identifier
     Identifier(Name),
     Ptr(Spanned<Box<Type>>),
     Array(Array),
@@ -327,7 +329,7 @@ pub struct ServiceMember {
 // TODO: .name can actually be an Id, since after resolution it's guaranteed
 // to exist. we would just need to make sure they're unique across all sorts
 // (maybe every value should be stored in an Entry enum?)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Name {
     pub library: LibraryId,
     pub name: String,

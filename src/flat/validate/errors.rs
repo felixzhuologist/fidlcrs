@@ -25,6 +25,8 @@ pub enum Error {
         span: Span,
         missing: Vec<ParamType>,
     },
+
+    AliasCycle(Vec<(Name, Span)>),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -35,6 +37,17 @@ pub enum ParamType {
 
 impl Error {
     pub fn into_snippet(self, _srcs: &FileMap) -> Snippet {
-        unimplemented!()
+        use Error::*;
+        match self {
+            AliasCycle(_cycle) => {
+                // note: the top level error name will be the last name, since
+                // the first element in the vector is the rhs of the first type
+                // that caused this error
+                // so the title should be: detected cycle for name N, followed
+                // by snippet_i = span_i, which requires processing name_i...
+                unimplemented!()
+            }
+            _ => unimplemented!(),
+        }
     }
 }
