@@ -14,9 +14,6 @@ pub struct Libraries {
     /// Topologically sorted list of Libraries
     pub libraries: Vec<Library>,
     name_to_id: HashMap<String, LibraryId>,
-
-    // this is populated during kindchecking
-    pub kinds: HashMap<Name, Kind>,
 }
 
 impl Libraries {

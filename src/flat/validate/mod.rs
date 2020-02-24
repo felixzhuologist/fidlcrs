@@ -7,6 +7,7 @@ use crate::flat::*;
 use crate::lexer::Span;
 use crate::raw::Spanned;
 use errors::{Error, ParamType};
+use std::collections::HashMap;
 
 impl Libraries {
     pub fn validate_latest(&self) {
@@ -101,25 +102,38 @@ pub enum Sort {
 // any type that refers to that type can interpret it as any kind it wants. in the
 // case of an alias cycle, we would want to store the error once and mark the other
 // types in the cycle
-pub fn kind_check(ty: Spanned<&Type>, scope: &Libraries) -> Result<Kind, Vec<Error>> {
+pub fn kind_check(
+    ty: Spanned<&Type>,
+    scope: &Libraries,
+    cache: &mut HashMap<Name, Kind>,
+) -> Result<Kind, Vec<Error>> {
     let seen = Vec::new();
-    _kind_check(ty, scope, seen)
+    _kind_check(ty, scope, cache, seen)
 }
 
 fn _kind_check(
     ty: Spanned<&Type>,
     scope: &Libraries,
+    cache: &mut HashMap<Name, Kind>,
     mut seen: Vec<(Name, Span)>,
 ) -> Result<Kind, Vec<Error>> {
     match &ty.value {
         Type::Identifier(name) => {
+            if let Some(kind) = cache.get(name) {
+                return Ok(*kind);
+            }
+
             if seen.iter().any(|(n, _)| n == name) {
+                // update the scope so that this error doesn't get recomputed
+                for (n, _) in seen.iter() {
+                    cache.insert(n.clone(), Kind::Any);
+                }
                 return Err(Error::AliasCycle(seen).into());
             }
             // NOTE: once Name is refactored just contain IDs, it can implement Copy and we won't
             // need to clone explicitly here
             seen.push((name.clone(), ty.span));
-            _kind_check(scope.get_type(name)?.into(), scope, seen)
+            _kind_check(scope.get_type(name)?.into(), scope, cache, seen)
         }
         Type::Array(Array { element_type, size }) => Ok(Kind::Kind {
             layout: Param::required(element_type),
@@ -141,7 +155,7 @@ fn _kind_check(
             layout: layout_param,
             constraint: constraint_param,
         }) => {
-            let func_kind = _kind_check(func.into(), scope, seen)?;
+            let func_kind = _kind_check(func.into(), scope, cache, seen)?;
             let func_def = match &*func.value {
                 Type::Identifier(name) => Some(scope.get_type(name)?.span),
                 _ => None,
