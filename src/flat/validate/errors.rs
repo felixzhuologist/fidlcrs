@@ -6,6 +6,8 @@ use annotate_snippets::snippet::Snippet;
 #[derive(Debug, Clone)]
 pub enum Error {
     SortError {
+        /// Span of the occurence of this error
+        span: Span,
         expected: Sort,
         actual: Sort,
     },
@@ -27,6 +29,25 @@ pub enum Error {
     },
 
     VarCycle(Vec<(Name, Span)>),
+
+    TypeError {
+        actual: Spanned<Type>,
+        expected: Type,
+    },
+    IntCoercionError {
+        span: Span,
+        ty: Type,
+    },
+    StringBoundsError {
+        span: Span,
+        length: usize,
+        bounds: Spanned<u64>,
+    },
+
+    InvalidBitsType(Spanned<Type>),
+
+    NullableTableMember(Span),
+    NullableUnionMember(Span),
 }
 
 #[derive(Debug, Copy, Clone)]

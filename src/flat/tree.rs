@@ -1,8 +1,6 @@
 use crate::lexer::Span;
 use crate::raw::{Attributes, IntLiteral, Spanned, Strictness};
-use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 
 #[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
 pub struct LibraryId(pub usize);
@@ -488,26 +486,6 @@ impl Param {
 // =====================================================================================
 // =====================================================================================
 
-// pub trait TypeScope {
-//     type Type;
-
-//     // TODO: what's the sig?
-//     fn lookup(&self, constraints: u32, layout: u32) -> &Self::Type;
-// }
-
-// pub struct Builtins {
-// }
-
-// impl Builtins {
-//     pub fn lookup(&self, _ty: &str) -> Type {
-//         unimplemented!()
-//     }
-// }
-
-// pub enum TermEvalError {
-//     Undefined(Name)
-// }
-
 // this concept should be merged with Scope?
 pub trait Namespace {
     fn lookup_term(&self, name: &Name) -> Option<&Term>;
@@ -537,49 +515,6 @@ pub fn resolve<T: Namespace>(term: &Term, scope: &T) -> Result<Term, Name> {
         _ => Ok(term.clone()),
     }
 }
-
-// really the scope here should be mapping names to types, so that typechecking an
-// identifier is just looking up its type in the scope and comparing to the ascribed type.
-// however, this means that we need to keep track of the value inside the
-// int type (or, this ident should be findable in the term scope), in order to handle
-// cases like this, where y should fail but z should be OK.
-// const uint16 x = 300;
-// const uint8 y = x;
-// const uint32 z = y;
-// kindchecking is handled in this way.
-// pub fn typecheck<T: Namespace>(term: &Term, scope: &T) -> Result<Type, ()> {
-//     match term {
-//         Term::Identifier(_) => {
-//             let resolved = resolve(term, scope).map_err(|_| ())?;
-//             // this comes from the scope
-//             let expected_ty = unimplemented!();
-//             match (resolved, &expected_ty) {
-//                 // TODO: check bounds. to do this, we need to kind check and
-//                 // type eval the bounds
-//                 (Term::Str(_), Type::Str(_bounds)) => Ok(expected_ty),
-//                 (Term::Int(val), Type::Int8) => i8::try_from(val).map(|_| expected_ty),
-//                 (Term::Int(val), Type::Int16) => i16::try_from(val).map(|_| expected_ty),
-//                 (Term::Int(val), Type::Int32) => i32::try_from(val).map(|_| expected_ty),
-//                 (Term::Int(val), Type::Int64) => i64::try_from(val).map(|_| expected_ty),
-//                 (Term::Int(val), Type::UInt8) => u8::try_from(val).map(|_| expected_ty),
-//                 (Term::Int(val), Type::UInt16) => u16::try_from(val).map(|_| expected_ty),
-//                 (Term::Int(val), Type::UInt32) => u32::try_from(val).map(|_| expected_ty),
-//                 (Term::Int(val), Type::UInt64) => u64::try_from(val).map(|_| expected_ty),
-//                 (Term::Float(_), Type::Float32)
-//                 | (Term::Float(_), Type::Float64)
-//                 | (Term::True, Type::Bool)
-//                 | (Term::False, Type::Bool) => Ok(Type::Bool),
-//                 (_, Type::Int) => panic!("users can't specify untyped Ints"),
-//                 (Term::Identifier(_), _) => panic!("should be fully resolved"),
-//                 _ => Err(()),
-//             }
-//         }
-//         Term::Str(_) => Ok(Type::Str(Str { bounds: None })),
-//         Term::Int(_) => Ok(Type::Int),
-//         Term::Float(_) => Ok(Type::Float64),
-//         Term::True | Term::False => Ok(Type::Bool),
-//     }
-// }
 
 // TODO: make evalable a trait? or move this to a method?
 // TODO: do we fuly evaluate the terms as well?
@@ -637,85 +572,6 @@ pub fn eval_ty<T: Namespace>(ty: &Type, scope: &T) -> Result<Type, Name> {
         // ClientEnd(_),
         // ServerEnd(_)
         _ => Ok(ty.clone()),
-    }
-}
-
-impl TryFrom<IntLiteral> for i64 {
-    type Error = ();
-
-    fn try_from(value: IntLiteral) -> Result<Self, Self::Error> {
-        if value.is_negative {
-            match value.value.cmp(&(std::i64::MIN as u64)) {
-                Ordering::Less => Ok(value.value as i64 * -1),
-                Ordering::Equal => Ok(value.value as i64),
-                Ordering::Greater => Err(()),
-            }
-        } else {
-            match value.value.cmp(&(std::i64::MAX as u64)) {
-                Ordering::Less | Ordering::Equal => Ok(value.value as i64),
-                Ordering::Greater => Err(()),
-            }
-        }
-    }
-}
-
-impl TryFrom<IntLiteral> for i32 {
-    type Error = ();
-
-    fn try_from(value: IntLiteral) -> Result<Self, Self::Error> {
-        i64::try_from(value).and_then(|val| i32::try_from(val).map_err(|_| ()))
-    }
-}
-
-impl TryFrom<IntLiteral> for i16 {
-    type Error = ();
-
-    fn try_from(value: IntLiteral) -> Result<Self, Self::Error> {
-        i64::try_from(value).and_then(|val| i16::try_from(val).map_err(|_| ()))
-    }
-}
-
-impl TryFrom<IntLiteral> for i8 {
-    type Error = ();
-
-    fn try_from(value: IntLiteral) -> Result<Self, Self::Error> {
-        i64::try_from(value).and_then(|val| i8::try_from(val).map_err(|_| ()))
-    }
-}
-
-impl TryFrom<IntLiteral> for u64 {
-    type Error = ();
-
-    fn try_from(value: IntLiteral) -> Result<Self, Self::Error> {
-        if value.is_negative {
-            Err(())
-        } else {
-            Ok(value.value)
-        }
-    }
-}
-
-impl TryFrom<IntLiteral> for u32 {
-    type Error = ();
-
-    fn try_from(value: IntLiteral) -> Result<Self, Self::Error> {
-        u64::try_from(value).and_then(|val| u32::try_from(val).map_err(|_| ()))
-    }
-}
-
-impl TryFrom<IntLiteral> for u16 {
-    type Error = ();
-
-    fn try_from(value: IntLiteral) -> Result<Self, Self::Error> {
-        u64::try_from(value).and_then(|val| u16::try_from(val).map_err(|_| ()))
-    }
-}
-
-impl TryFrom<IntLiteral> for u8 {
-    type Error = ();
-
-    fn try_from(value: IntLiteral) -> Result<Self, Self::Error> {
-        u64::try_from(value).and_then(|val| u8::try_from(val).map_err(|_| ()))
     }
 }
 
