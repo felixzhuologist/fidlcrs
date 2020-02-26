@@ -39,15 +39,23 @@ pub enum Error {
         ty: Type,
     },
     StringBoundsError {
-        span: Span,
-        length: usize,
+        length: Spanned<usize>,
         bounds: Spanned<u64>,
     },
 
     InvalidBitsType(Spanned<Type>),
-
-    NullableTableMember(Span),
-    NullableUnionMember(Span),
+    InvalidEnumType(Spanned<Type>),
+    DuplicateMemberValue {
+        original: Span,
+        dupe: Span,
+        /// either enum or bits
+        decl_kind: &'static str,
+    },
+    NullableMember {
+        span: Span,
+        // either union or table
+        decl_kind: &'static str,
+    },
 }
 
 #[derive(Debug, Copy, Clone)]

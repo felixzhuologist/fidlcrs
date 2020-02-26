@@ -59,6 +59,14 @@ impl Libraries {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum Sort {
+    Term,
+    Type,
+    Protocol,
+    Service,
+}
+
 // we can't place the attributes directly into the term/type, because
 // it's associated with the _declaration_ of that value, and not its usage
 // as an rhs value. for example, in the statement
@@ -148,6 +156,16 @@ pub enum Type {
     // TODO: this is only relevant for the REPL, and we may want to remove it
     Int,
     Any,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Kind {
+    /// The top kind which is valid in any context. It's used to as the kind for
+    /// types that are not well defined/errored, so that validation can continue
+    /// while ensuring that the same error isn't returned multiple times
+    Any,
+    /// A regular Kind, which is defined in terms of its layout/constraints params
+    Kind { layout: Param, constraints: Param },
 }
 
 #[derive(Debug, Clone)]
@@ -407,16 +425,6 @@ pub struct TypeSubstitution {
     pub constraint: Option<Spanned<Box<Term>>>,
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum Kind {
-    /// The top kind which is valid in any context. It's used to as the kind for
-    /// types that are not well defined/errored, so that validation can continue
-    /// while ensuring that the same error isn't returned multiple times
-    Any,
-    /// A regular Kind, which is defined in terms of its layout/constraints params
-    Kind { layout: Param, constraints: Param },
-}
-
 impl Kind {
     pub fn base_kind() -> Kind {
         Kind::Kind {
@@ -475,103 +483,6 @@ impl Param {
             Param::Required => true,
             Param::Optional | Param::None => false,
         }
-    }
-}
-
-// =====================================================================================
-// =====================================================================================
-// =====================================================================================
-// TODO: experimental code below, which will be repurposed and used somewhere or removed
-// =====================================================================================
-// =====================================================================================
-// =====================================================================================
-
-// this concept should be merged with Scope?
-pub trait Namespace {
-    fn lookup_term(&self, name: &Name) -> Option<&Term>;
-    fn lookup_ty(&self, name: &Name) -> Option<&Type>;
-}
-
-pub fn eval<T: Namespace>(term: &Term, scope: &T) -> Result<Term, Name> {
-    use Term::*;
-    match term {
-        Identifier(ref name) => match scope.lookup_term(name) {
-            Some(ref t) => eval(t, scope),
-            None => Err(name.clone()),
-        },
-        _ => Ok(term.clone()),
-    }
-}
-
-// NOTE: this is currently the same as eval, since we only have identifiers and
-// literals
-pub fn resolve<T: Namespace>(term: &Term, scope: &T) -> Result<Term, Name> {
-    use Term::*;
-    match term {
-        Identifier(ref name) => match scope.lookup_term(name) {
-            Some(ref t) => resolve(t, scope),
-            None => Err(name.clone()),
-        },
-        _ => Ok(term.clone()),
-    }
-}
-
-// TODO: make evalable a trait? or move this to a method?
-// TODO: do we fuly evaluate the terms as well?
-pub fn eval_ty<T: Namespace>(ty: &Type, scope: &T) -> Result<Type, Name> {
-    match ty {
-        Type::Identifier(ref name) => match scope.lookup_ty(name) {
-            Some(ref ty) => eval_ty(ty, scope),
-            None => Err(name.clone()),
-        },
-        // TODO: these are kind of uninteresting, just recursively resolving
-        // the inner types
-        Type::Struct(_) => unimplemented!(),
-        Type::Bits(_) => unimplemented!(),
-        Type::Enum(_) => unimplemented!(),
-        Type::Table(_) => unimplemented!(),
-        Type::Union(_) => unimplemented!(),
-        Type::Ptr(_) => unimplemented!(),
-        Type::Array(_) => unimplemented!(),
-        Type::Vector(_) => unimplemented!(),
-        // this is the more interesting one. "type operator application"
-        Type::TypeSubstitution(sub) => {
-            let TypeSubstitution {
-                func,
-                layout,
-                constraint,
-            } = sub;
-            // we can simplify this if we assume that kind checking passed before
-            // calling eval_ty
-            let layout_arg = layout.clone();
-            let constraint_arg = constraint.clone();
-            match eval_ty(&func.value, scope)? {
-                Type::Array(Array {
-                    ref element_type,
-                    ref size,
-                }) => Ok({
-                    if (element_type.is_some() ^ layout_arg.is_some())
-                        && (size.is_some() ^ constraint_arg.is_some())
-                    {
-                        let element_type = element_type.clone().or(layout_arg);
-                        let size = size.clone().or(constraint_arg);
-                        Type::Array(Array { element_type, size })
-                    } else {
-                        ty.clone()
-                    }
-                }),
-                Type::Vector(_) => unimplemented!(),
-                Type::Str(_) => unimplemented!(),
-                // stuck type
-                _ => Ok(ty.clone()),
-            }
-        }
-        // do these eval further? having a valid protocol here is not "checked"
-        // in either type eval or in kind checking.
-        // Str(_),
-        // ClientEnd(_),
-        // ServerEnd(_)
-        _ => Ok(ty.clone()),
     }
 }
 
