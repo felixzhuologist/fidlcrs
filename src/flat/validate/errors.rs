@@ -1,20 +1,22 @@
 use super::*;
+use crate::errors::{span_to_snippet, spans_to_snippet, two_spans_to_snippet, ErrText};
+use crate::flat::Sort;
 use crate::lexer::Span;
 use crate::source_file::FileMap;
-use annotate_snippets::snippet::Snippet;
+use annotate_snippets::snippet::{Annotation, AnnotationType, Snippet};
+use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum Error {
     SortError {
         /// Span of the occurence of this error
         span: Span,
+        // TODO: we may want to include definitions of these variables as well
         expected: Sort,
         actual: Sort,
     },
 
-    // these kind errors can essentially be merged into a single
-    // UnexpectedKind { expected, actual } error, though mentioning kinds to users
-    // can be kind of cryptic, so they're separated out further
+    /// A param was passed to a Type that does not accept it
     InvalidTypeParam {
         func_call: Span,
         param: ParamType,
@@ -39,7 +41,9 @@ pub enum Error {
         ty: Type,
     },
     StringBoundsError {
+        /// The span is on the string literal
         length: Spanned<usize>,
+        /// The span is on the bounds
         bounds: Spanned<u64>,
     },
 
@@ -65,16 +69,276 @@ pub enum ParamType {
 }
 
 impl Error {
-    pub fn into_snippet(self, _srcs: &FileMap) -> Snippet {
+    pub fn into_snippet(self, srcs: &FileMap) -> Snippet {
         use Error::*;
         match self {
-            // note: the top level error name will be the last name, since
-            // the first element in the vector is the rhs of the first type
-            // that caused this error
-            // so the title should be: detected cycle for name N, followed
-            // by snippet_i = span_i, which requires processing name_i...
-            VarCycle(cycle) => unimplemented!(),
-            _ => unimplemented!(),
+            SortError {
+                span,
+                expected,
+                actual,
+            } => span_to_snippet(
+                span,
+                srcs,
+                ErrText {
+                    text: "sort error".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: format!("expected a {}, but got a {} instead", expected, actual),
+                    ty: AnnotationType::Error,
+                },
+                None,
+            ),
+            InvalidTypeParam {
+                func_call,
+                param,
+                func_def,
+            } => {
+                let title = ErrText {
+                    text: "invalid type parameter".to_string(),
+                    ty: AnnotationType::Error,
+                };
+                let call_annotation = ErrText {
+                    text: format!(
+                        "type was passed a {} parameter, which it does not support",
+                        param
+                    ),
+                    ty: AnnotationType::Error,
+                };
+                match func_def {
+                    None => span_to_snippet(func_call, srcs, title, call_annotation, None),
+                    Some(defn) => two_spans_to_snippet(
+                        func_call,
+                        defn,
+                        srcs,
+                        title,
+                        call_annotation,
+                        ErrText {
+                            text: "which is defined here".to_string(),
+                            ty: AnnotationType::Help,
+                        },
+                        None,
+                    ),
+                }
+            }
+            NonConcreteType { span, missing } => span_to_snippet(
+                span,
+                srcs,
+                ErrText {
+                    text: "type is not fully resolved".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "expected a fully resolved type here".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                Some(Annotation {
+                    // TODO: print this nicer
+                    label: Some(format!("type is missing: {:?}", missing)),
+                    id: None,
+                    annotation_type: AnnotationType::Help,
+                }),
+            ),
+            VarCycle(cycle) => {
+                // note: the top level error name will be the last name, since
+                // the first element in the vector is the rhs of the first type
+                // that caused this error
+                let name = cycle[cycle.len() - 1].0.clone();
+                let spans: Vec<_> = cycle
+                    .into_iter()
+                    .map(|(name, span)| {
+                        (
+                            span,
+                            ErrText {
+                                text: format!("...which requires processing `{}`...", name.name),
+                                ty: AnnotationType::Info,
+                            },
+                        )
+                    })
+                    .collect();
+                spans_to_snippet(
+                    ErrText {
+                        text: format!("cycle detected when processing {}", name.name),
+                        ty: AnnotationType::Error,
+                    },
+                    spans,
+                    srcs,
+                )
+            }
+            TypeError { actual, expected } => span_to_snippet(
+                actual.span,
+                srcs,
+                ErrText {
+                    text: "type error".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: format!("value has type {}, but expected {}", actual.value, expected),
+                    ty: AnnotationType::Error,
+                },
+                None,
+            ),
+            IntCoercionError { span, ty } => span_to_snippet(
+                span,
+                srcs,
+                ErrText {
+                    text: "int coercion error".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: format!("cannot be casted to {} - value is out of bounds", ty),
+                    ty: AnnotationType::Error,
+                },
+                None,
+            ),
+            StringBoundsError { length, bounds } => span_to_snippet(
+                length.span,
+                srcs,
+                ErrText {
+                    text: "string bounds error".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: format!(
+                        "string has a length of {}, but the type bounds are specified as {}",
+                        length.value, bounds.value
+                    ),
+                    ty: AnnotationType::Error,
+                },
+                None,
+            ),
+            InvalidBitsType(ty) => span_to_snippet(
+                ty.span,
+                srcs,
+                ErrText {
+                    text: "invalid bits type".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: format!(
+                        "bits type specified as {}, but must be an unsigned integral type",
+                        ty.value
+                    ),
+                    ty: AnnotationType::Error,
+                },
+                None,
+            ),
+            InvalidEnumType(ty) => span_to_snippet(
+                ty.span,
+                srcs,
+                ErrText {
+                    text: "invalid enum type".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: format!(
+                        "enum type specified as {}, but must be an integral type",
+                        ty.value
+                    ),
+                    ty: AnnotationType::Error,
+                },
+                None,
+            ),
+            DuplicateMemberValue {
+                original,
+                dupe,
+                decl_kind,
+            } => two_spans_to_snippet(
+                original,
+                dupe,
+                srcs,
+                ErrText {
+                    text: format!("{} has duplicate member values", decl_kind),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "value conflicts with existing member".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "original member defined here".to_string(),
+                    ty: AnnotationType::Info,
+                },
+                None,
+            ),
+            NullableMember { span, decl_kind } => span_to_snippet(
+                span,
+                srcs,
+                ErrText {
+                    text: format!("nullable {} member", decl_kind),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: format!("{} member cannot be nullable", decl_kind),
+                    ty: AnnotationType::Error,
+                },
+                Some(Annotation {
+                    label: Some("try removing the nullable member in a struct".to_string()),
+                    id: None,
+                    annotation_type: AnnotationType::Help,
+                }),
+            ),
+        }
+    }
+}
+
+// TODO: move this along their definitions?
+impl fmt::Display for ParamType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParamType::Constraint => write!(f, "constraint"),
+            ParamType::Layout => write!(f, "layout"),
+        }
+    }
+}
+
+impl fmt::Display for Sort {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Sort::Term => write!(f, "const"),
+            Sort::Type => write!(f, "type"),
+            Sort::Protocol => write!(f, "protocol"),
+            Sort::Service => write!(f, "service"),
+        }
+    }
+}
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::Struct(_) => write!(f, "struct"),
+            Type::Bits(_) => write!(f, "bits"),
+            Type::Enum(_) => write!(f, "enum"),
+            Type::Table(_) => write!(f, "table"),
+            Type::Union(_) => write!(f, "union"),
+            Type::Ptr(ty) => write!(f, "nullable {}", ty.value),
+            Type::Array(_) => write!(f, "array"),
+            Type::Vector(_) => write!(f, "vector"),
+            Type::Str(_) => write!(f, "string"),
+            Type::Handle(_) | Type::ClientEnd(_) | Type::ServerEnd(_) => write!(f, "handle"),
+            Type::Primitive(sub) => write!(f, "{}", sub),
+            Type::Any => write!(f, "any"),
+            // shouldn't be called anyways
+            Type::TypeSubstitution(_) | Type::Identifier(_) | Type::Int => unimplemented!(),
+        }
+    }
+}
+
+impl fmt::Display for PrimitiveSubtype {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use PrimitiveSubtype::*;
+        match self {
+            Bool => write!(f, "bool"),
+            Int8 => write!(f, "int8"),
+            Int16 => write!(f, "int16"),
+            Int32 => write!(f, "int32"),
+            Int64 => write!(f, "int64"),
+            UInt8 => write!(f, "uint8"),
+            UInt16 => write!(f, "uint16"),
+            UInt32 => write!(f, "uint32"),
+            UInt64 => write!(f, "uint64"),
+            Float32 => write!(f, "float32"),
+            Float64 => write!(f, "float64"),
         }
     }
 }
