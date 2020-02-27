@@ -95,6 +95,7 @@ impl<'a> Validator<'a> {
                 });
                 continue;
             }
+            self.validate_type(ty.into());
 
             let name = self.to_name(name);
             let actual = self.types.get(&name).unwrap().clone();
@@ -157,11 +158,7 @@ impl<'a> Validator<'a> {
 
     fn validate_protocols(&mut self, lib: &Library) {
         for protocol in lib.protocols.values() {
-            for compose in &protocol.value.compose {
-                if let Err(err) = self.scope.get_protocol(compose.into()) {
-                    self.errors.push(err);
-                }
-            }
+            protocol.value.validate(self);
         }
     }
 

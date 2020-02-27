@@ -233,3 +233,51 @@ impl UnionMember {
         Ok(())
     }
 }
+
+impl Protocol {
+    pub fn validate(&self, validator: &mut Validator) {
+        for compose in &self.compose {
+            if let Err(err) = validator.scope.get_protocol(compose.into()) {
+                validator.errors.push(err);
+            }
+        }
+
+        for method in &self.methods {
+            method.value.validate(validator);
+        }
+    }
+}
+
+impl Method {
+    pub fn validate(&self, validator: &mut Validator) {
+        if let Some(ref req) = self.request {
+            for param in req {
+                if let Err(err) = param.value.validate(validator) {
+                    validator.errors.push(err);
+                }
+            }
+        }
+
+        if let Some(ref resp) = self.request {
+            for param in resp {
+                if let Err(err) = param.value.validate(validator) {
+                    validator.errors.push(err);
+                }
+            }
+        }
+    }
+}
+
+impl Parameter {
+    pub fn validate(&self, validator: &mut Validator) -> Result<(), Error> {
+        let kind = validator.kind_check((&self.ty).into());
+        if !kind.is_concrete() {
+            return Err(Error::NonConcreteType {
+                span: self.ty.span,
+                missing: kind.missing(),
+            })
+        }
+        validator.validate_type((&self.ty).into());
+        Ok(())
+    }
+}
