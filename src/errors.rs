@@ -134,14 +134,16 @@ pub fn spans_to_snippet(
     title: ErrText,
     annotations: Vec<(Span, ErrText)>,
     srcs: &FileMap,
+    footer: Option<Annotation>,
 ) -> Snippet {
+    let footer = footer.map_or(vec![], |a| vec![a]);
     Snippet {
         title: Some(Annotation {
             label: Some(title.text),
             id: None,
             annotation_type: title.ty,
         }),
-        footer: vec![],
+        footer,
         slices: annotations
             .into_iter()
             .map(|(span, text)| span_to_slice(span, srcs, text))

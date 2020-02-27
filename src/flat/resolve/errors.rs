@@ -186,6 +186,7 @@ impl Error {
                     ),
                 ],
                 srcs,
+                None,
             ),
             ConstrainedHandle(span) => span_to_snippet(
                 span,

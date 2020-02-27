@@ -395,21 +395,3 @@ fn object_align(size: u32) -> u32 {
 fn align_to(size: u32, alignment: u32) -> u32 {
     (size + (alignment - 1)) & !(alignment - 1)
 }
-
-// TODO: we do need Type::Identifier, in order to check for recursion here...
-
-// Conceptually FIDL will allow any type that can be expressed in the wire format,
-// which means that recursive types are OK if they can be finite. In other words,
-// it's OK to have an infinite upper bound, but not OK to have an infinite lower bound.
-// In practice, what can be expressed in any binding may be more restrictive.
-pub fn can_be_finite(ty: &Type) -> bool {
-    use Type::*;
-    match ty {
-        // add to a set of seen names. if it's already there, return false, otherwise, call
-        // can_be_finite recursively
-        // Identifier(_name) => unimplemented!(),
-        Product(members, _) | Sum(members) => members.iter().all(|m| can_be_finite(&*m)),
-        Boxed(ty) | Array(ty, _) => can_be_finite(&*ty),
-        Ptr(_) | Handle | Primitive(_) => true,
-    }
-}

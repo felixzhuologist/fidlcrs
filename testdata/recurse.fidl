@@ -1,0 +1,29 @@
+library test;
+
+struct Foo {
+  Foo foo;
+};
+
+struct Bar {
+  Bar? foo;
+};
+
+struct A {
+  vector<A> a;
+};
+
+union Tree {
+  1: Tree child;
+  2: uint8 value;
+};
+
+union List {
+  1: List child;
+};
+
+table Table {
+  1: Table hmm;
+  2: reserved;
+  3: List hmmm;
+};
+

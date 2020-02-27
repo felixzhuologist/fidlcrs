@@ -32,6 +32,7 @@ pub enum Error {
     },
 
     VarCycle(Vec<(Name, Span)>),
+    InfiniteType(Vec<(Name, Span)>),
 
     TypeError {
         actual: Spanned<Type>,
@@ -168,6 +169,35 @@ impl Error {
                     },
                     spans,
                     srcs,
+                    None,
+                )
+            }
+            InfiniteType(cycle) => {
+                let name = cycle[cycle.len() - 1].0.clone();
+                let spans: Vec<_> = cycle
+                    .into_iter()
+                    .map(|(name, span)| {
+                        (
+                            span,
+                            ErrText {
+                                text: format!("contains infinitely sized `{}`...", name.name),
+                                ty: AnnotationType::Info,
+                            },
+                        )
+                    })
+                    .collect();
+                spans_to_snippet(
+                    ErrText {
+                        text: format!("{} is an infinitely sized type", name.name),
+                        ty: AnnotationType::Error,
+                    },
+                    spans,
+                    srcs,
+                    Some(Annotation {
+                        label: Some("types that can _only_ be infinitely sized can not be represented on the wire".to_string()),
+                        id: None,
+                        annotation_type: AnnotationType::Info,
+                    })
                 )
             }
             TypeError { actual, expected } => span_to_snippet(

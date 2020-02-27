@@ -1,8 +1,13 @@
 use super::errors::{Error, ParamType};
+use super::eval::eval_type;
 use crate::flat::*;
 use crate::lexer::Span;
 use crate::raw::Spanned;
 use std::collections::HashMap;
+
+// NOTE: this and type check can be modified not to take the cache arg. instead,
+// it will return a Kind and the Names that it has traversed, and the caller
+// can store the fact that each of those Names has the returned kind.
 
 pub fn kind_check(
     ty: Spanned<&Type>,
@@ -152,5 +157,57 @@ impl Kind {
                 missing
             }
         }
+    }
+}
+
+pub fn recursion_check(ty: Spanned<&Type>, scope: &Libraries) -> Result<(), Vec<(Name, Span)>> {
+    let mut seen = Vec::new();
+    if !can_be_finite(ty, scope, &mut seen) {
+        Err(seen)
+    } else {
+        Ok(())
+    }
+}
+
+fn can_be_finite(ty: Spanned<&Type>, scope: &Libraries, seen: &mut Vec<(Name, Span)>) -> bool {
+    match ty.value {
+        Type::Struct(Struct { members }) => members
+            .iter()
+            .all(|member| can_be_finite((&member.value.ty).into(), scope, seen)),
+        Type::Table(_) => true,
+        Type::Union(Union { members, .. }) => {
+            members.iter().any(|member| match member.value.inner {
+                UnionMemberInner::Reserved => false,
+                UnionMemberInner::Used { ref ty, .. } => can_be_finite(ty.into(), scope, seen),
+            })
+        }
+        Type::Identifier(name) => {
+            if seen.iter().any(|(n, _)| n == name) {
+                return false;
+            }
+            seen.push((name.clone(), ty.span));
+            let ty = scope.get_type(ty.span.wrap(name)).unwrap();
+            let can_be_finite = can_be_finite(ty.into(), scope, seen);
+            if can_be_finite {
+                seen.pop();
+            }
+            can_be_finite
+        }
+        Type::Ptr(_) => true,
+        Type::Array(Array { element_type, .. }) => {
+            if let Some(ref inner) = element_type {
+                can_be_finite(inner.into(), scope, seen)
+            } else {
+                // 🤔
+                true
+            }
+        }
+        // a vector could always have 0 elements
+        Type::Vector(_) | Type::Str(_) => true,
+        Type::TypeSubstitution(_) => {
+            let evaled = eval_type(ty.into(), scope).unwrap();
+            can_be_finite(evaled.span.wrap(&evaled.value), scope, seen)
+        }
+        _ => true,
     }
 }

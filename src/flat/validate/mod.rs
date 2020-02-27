@@ -10,8 +10,8 @@ use crate::flat::*;
 use crate::raw::Spanned;
 use errors::Error;
 use eval::{eval_term, eval_type};
-use kindcheck::kind_check;
-use std::collections::HashMap;
+use kindcheck::{kind_check, recursion_check};
+use std::collections::{HashMap, HashSet};
 use typecheck::{term_can_have_type, type_check};
 
 pub struct Validator<'a> {
@@ -111,6 +111,23 @@ impl<'a> Validator<'a> {
             let (_, ty) = &entry.value;
             self.validate_type(ty.into());
         }
+
+        let mut seen: HashSet<Name> = HashSet::new();
+        for (name, entry) in scope {
+            let (_, ty) = &entry.value;
+            if let Kind::Any = self.kind_check(ty.into()) {
+                continue;
+            }
+            if seen.contains(&self.to_name(name)) {
+                continue;
+            }
+            if let Err(cycle) = recursion_check(ty.into(), self.scope) {
+                for (n, _) in cycle.iter() {
+                    seen.insert(n.clone());
+                }
+                self.errors.push(Error::InfiniteType(cycle));
+            }
+        }
     }
 
     fn validate_type(&mut self, ty: Spanned<&Type>) {
@@ -125,7 +142,7 @@ impl<'a> Validator<'a> {
                 if let Err(err) = can_be_nullable(&evaled) {
                     self.errors.push(err);
                 }
-                self.validate_type(evaled.span.wrap(&evaled.value));
+                self.validate_type(val.into());
             }
             Type::ClientEnd(name) | Type::ServerEnd(name) => {
                 if let Err(err) = self.scope.get_protocol(ty.span.wrap(name)) {
