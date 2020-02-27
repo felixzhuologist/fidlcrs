@@ -1,26 +1,70 @@
 use crate::flat;
 use crate::flat::PrimitiveSubtype::*;
+use std::cmp;
 
 #[derive(Debug, Clone)]
 pub enum Type {
-    Product(Vec<Box<Type>>),
+    /// The type that contains all of its elements. Second parameter indicates
+    /// whether this is a flexible envelope
+    Product(Vec<Box<Type>>, bool),
+    /// The type that may contain any one of its elements
     Sum(Vec<Box<Type>>),
-    /// Type the envelope contains, is_nullable, is_flexible
-    Envelope(Box<Type>, bool, bool),
-    Ptr(Box<Type>),
+
+    // An Array is just a Product with the same type multiple times
     Array(Box<Type>, u32),
-    // Really, a DynVector is a vector, and a Vector is just a shortcut for
-    // a DynVector with only one element type. We need DynVector to be able to
-    // represent tables, where each element can be an Envelope of a different type.
-    // TODO: does a DynVector have bounds? technically the size if fixed for tables.
-    // TODO: if no bounds is specified, then we'd use u32::MAX here, which means
-    // certain operations will overflow. need to update to use saturating ops instead
-    DynVector(Vec<Box<Type>>, u32),
-    // TODO: can a vector be expressed as an envelope<array>? since we only get max
-    // out of line
-    Vector(Box<Type>, u32),
+
+    // TODO: this may be going too far... we probably want separate Types for vectors and evelopes
+    /// A 64bit pointer that MAY point to out of line content
+    Ptr(Box<Type>),
+    /// A 64bit pointer that MUST point to out of line content
+    Boxed(Box<Type>),
+
+    /// A 32 bit handle
     Handle,
+    /// A primitive type
     Primitive(flat::PrimitiveSubtype),
+}
+
+pub fn nn_envelope(ty: Type, is_flexible: bool) -> Type {
+    Type::Product(
+        vec![
+            Box::new(Type::Primitive(UInt32)),
+            Box::new(Type::Primitive(UInt32)),
+            Box::new(Type::Boxed(Box::new(ty))),
+        ],
+        is_flexible,
+    )
+}
+
+pub fn envelope(ty: Type, is_flexible: bool) -> Type {
+    Type::Product(
+        vec![
+            Box::new(Type::Primitive(UInt32)),
+            Box::new(Type::Primitive(UInt32)),
+            Box::new(Type::Ptr(Box::new(ty))),
+        ],
+        is_flexible,
+    )
+}
+
+pub fn from_union(variants: Vec<Box<Type>>, is_flexible: bool) -> Type {
+    Type::Product(
+        vec![
+            Box::new(Type::Primitive(UInt64)), // tag
+            Box::new(nn_envelope(Type::Sum(variants), is_flexible)),
+        ],
+        is_flexible,
+    )
+}
+
+pub fn from_vector(element_type: Box<Type>, bounds: u32) -> Type {
+    Type::Product(
+        vec![
+            Box::new(Type::Primitive(UInt64)), // num elements
+            Box::new(Type::Boxed(Box::new(Type::Array(element_type, bounds)))),
+        ],
+        false,
+    )
 }
 
 // TODO: this should probably take a Spanned<Box<Type>>
@@ -31,13 +75,56 @@ pub fn desugar(ty: &flat::Type) -> Type {
                 .iter()
                 .map(|sp| Box::new(desugar(&*sp.value.ty.value)))
                 .collect(),
+            false,
         ),
         flat::Type::Bits(val) => desugar(val.get_type()),
         flat::Type::Enum(val) => desugar(val.get_type()),
-        flat::Type::Table(_) => unimplemented!(),
-        flat::Type::Union(_) => unimplemented!(),
+        flat::Type::Table(table) => {
+            let member_types = table
+                .members
+                .iter()
+                .filter_map(|member| match &member.value.inner {
+                    flat::TableMemberInner::Reserved => None,
+                    flat::TableMemberInner::Used { ty, .. } => Some(Box::new(desugar(&*ty.value))),
+                })
+                .collect();
+            Type::Product(
+                vec![
+                    Box::new(Type::Primitive(UInt64)), // num elements
+                    // the flexible envelope stuff isn't really correct
+                    Box::new(Type::Ptr(Box::new(Type::Product(
+                        member_types,
+                        table.strictness().is_flexible(),
+                    )))),
+                ],
+                false,
+            )
+        }
+        flat::Type::Union(union) => {
+            let variants = union
+                .members
+                .iter()
+                .filter_map(|member| match &member.value.inner {
+                    flat::UnionMemberInner::Reserved => None,
+                    flat::UnionMemberInner::Used { ty, .. } => Some(Box::new(desugar(&*ty.value))),
+                })
+                .collect();
+            Type::Product(
+                vec![
+                    Box::new(Type::Primitive(UInt64)), // ordinal
+                    Box::new(nn_envelope(
+                        Type::Sum(variants),
+                        union.strictness().is_flexible(),
+                    )),
+                ],
+                false,
+            )
+        }
         flat::Type::Identifier(_) => unimplemented!(),
-        // flat::Type::Ptr(ty) => Type::Ptr(Box::new(desugar(&*ty))),
+        // TODO: we need to flatten here depending on what's nullable. e.g. for vectors, strings,
+        // unions, there isn't another layer of indirection - the nullability is built into the
+        // pointer that already exists in that thing. But to check that, we need to ensure that
+        // the inner ty is completely evaled
         flat::Type::Ptr(_) => unimplemented!(),
         flat::Type::Array(_) => unimplemented!(),
         flat::Type::Vector(_) => unimplemented!(),
@@ -96,14 +183,14 @@ pub struct FieldShape {
 
 pub fn typeshape(ty: &Type, wire_format: WireFormat) -> TypeShape {
     let unalined_size = unaligned_size(ty, wire_format);
-    let alignment = alignment(ty, wire_format);
+    let alignment = alignment(ty, false, wire_format);
     TypeShape {
         inline_size: align_to(unalined_size, alignment),
         alignment: alignment,
         depth: depth(ty, wire_format),
         max_handles: max_handles(ty, wire_format),
         max_out_of_line: max_out_of_line(ty, wire_format),
-        has_padding: has_padding(ty, wire_format),
+        has_padding: has_padding(ty, false, wire_format),
         has_flexible_envelope: has_flexible_envelope(ty, wire_format),
         contains_union: contains_union(ty, wire_format),
     }
@@ -112,7 +199,7 @@ pub fn typeshape(ty: &Type, wire_format: WireFormat) -> TypeShape {
 fn unaligned_size(ty: &Type, wire_format: WireFormat) -> u32 {
     use Type::*;
     match ty {
-        Product(members) => {
+        Product(members, _) => {
             if members.is_empty() {
                 return 1;
             }
@@ -126,10 +213,8 @@ fn unaligned_size(ty: &Type, wire_format: WireFormat) -> u32 {
             .map(|member| unaligned_size(&*member, wire_format))
             .max()
             .unwrap_or(1),
-        Ptr(_) => 8,
-        Envelope(_, _, _) => 16,
-        DynVector(_, _) | Vector(_, _) => 16,
         Array(ty, size) => unaligned_size(&*ty, wire_format) * size,
+        Ptr(_) | Boxed(_) => 8,
         Handle => 4,
         Primitive(subtype) => match subtype {
             Bool | Int8 | UInt8 => 1,
@@ -140,38 +225,33 @@ fn unaligned_size(ty: &Type, wire_format: WireFormat) -> u32 {
     }
 }
 
-fn alignment(ty: &Type, wire_format: WireFormat) -> u32 {
+fn alignment(ty: &Type, ool: bool, wire_format: WireFormat) -> u32 {
     use Type::*;
     match ty {
-        Sum(members) | Product(members) => members
+        Sum(members) | Product(members, _) => members
             .iter()
-            .map(|member| alignment(&*member, wire_format))
+            .map(|member| alignment(&*member, ool, wire_format))
             .max()
             .unwrap_or(1),
-        Ptr(_) => 8,
-        Envelope(_, _, _) => 8,
-        DynVector(_, _) | Vector(_, _) => 8,
-        Array(ty, _) => alignment(&*ty, wire_format),
-        Handle | Primitive(_) => unaligned_size(ty, wire_format),
+        Array(ty, _) => alignment(&*ty, ool, wire_format),
+        Ptr(_) | Boxed(_) => 8,
+        Handle | Primitive(_) => {
+            let min = if ool { 8 } else { 0 };
+            cmp::min(min, unaligned_size(ty, wire_format))
+        }
     }
 }
 
 fn depth(ty: &Type, wire_format: WireFormat) -> u32 {
     use Type::*;
     match ty {
-        Sum(members) | Product(members) => members
+        Sum(members) | Product(members, _) => members
             .iter()
             .map(|member| depth(&*member, wire_format))
             .max()
             .unwrap_or(0),
-        DynVector(members, _) => {
-            1 + members
-                .iter()
-                .map(|member| depth(&*member, wire_format))
-                .max()
-                .unwrap_or(0)
-        }
-        Envelope(ty, _, _) | Ptr(ty) | Vector(ty, _) | Array(ty, _) => 1 + depth(&*ty, wire_format),
+        Array(ty, _) => depth(&*ty, wire_format),
+        Ptr(ty) | Boxed(ty) => 1 + depth(&*ty, wire_format),
         Handle | Primitive(_) => 0,
     }
 }
@@ -179,22 +259,21 @@ fn depth(ty: &Type, wire_format: WireFormat) -> u32 {
 fn max_handles(ty: &Type, wire_format: WireFormat) -> u32 {
     use Type::*;
     match ty {
-        DynVector(members, _) | Sum(members) | Product(members) => members
+        Sum(members) | Product(members, _) => members
             .iter()
             .map(|member| max_handles(&*member, wire_format))
             .sum::<u32>(),
-        Envelope(ty, _, _) | Vector(ty, _) | Array(ty, _) | Ptr(ty) => {
-            max_handles(&*ty, wire_format)
-        }
-        Primitive(_) => 0,
+        Array(ty, size) => max_handles(&*ty, wire_format) * size,
+        Ptr(ty) | Boxed(ty) => max_handles(&*ty, wire_format),
         Handle => 1,
+        Primitive(_) => 0,
     }
 }
 
 fn max_out_of_line(ty: &Type, wire_format: WireFormat) -> u32 {
     use Type::*;
     match ty {
-        Product(members) => members
+        Product(members, _) => members
             .iter()
             .map(|member| max_out_of_line(&*member, wire_format))
             .sum::<u32>(),
@@ -203,43 +282,34 @@ fn max_out_of_line(ty: &Type, wire_format: WireFormat) -> u32 {
             .map(|member| max_out_of_line(&*member, wire_format))
             .max()
             .unwrap_or(0),
-        Vector(ty, bounds) => {
-            object_align(max_out_of_line(&*ty, wire_format)) * bounds
-                + object_align(unaligned_size(&*ty, wire_format)) * bounds
-        }
-        DynVector(members, _) => members
-            .iter()
-            .map(|member| {
-                object_align(
-                    max_out_of_line(&*member, wire_format)
-                        + object_align(unaligned_size(&*ty, wire_format)),
-                )
-            })
-            .sum::<u32>(),
-        Envelope(ty, _, _) | Ptr(ty) => {
+        Array(ty, size) => max_out_of_line(&*ty, wire_format) * size,
+        Ptr(ty) | Boxed(ty) => {
             unaligned_size(&*ty, wire_format) + max_out_of_line(&*ty, wire_format)
         }
-        Array(ty, size) => max_out_of_line(&*ty, wire_format) * size,
         Handle | Primitive(_) => 0,
     }
 }
 
-fn has_padding(ty: &Type, wire_format: WireFormat) -> bool {
+// TODO
+fn has_padding(ty: &Type, ool: bool, wire_format: WireFormat) -> bool {
     use Type::*;
     match ty {
-        Product(members) => members
-            .iter()
-            .any(|member| has_padding(&*member, wire_format)),
+        Product(members, _) => {
+            let fieldshapes = fieldshapes(ty, ool, wire_format).unwrap();
+            let inline_padding = fieldshapes.iter().any(|shape| shape.padding > 0);
+            let inherent_padding = members
+                .iter()
+                .any(|member| has_padding(member, ool, wire_format));
+            inline_padding || inherent_padding
+        }
         // TODO(fxb/36331)
         Sum(_) => true,
-        // do envelopes inherently have padding?
-        Envelope(ty, _, _) | Array(ty, _) | Ptr(ty) => has_padding(&*ty, wire_format),
-        Vector(ty, _) => {
-            has_padding(&*ty, wire_format) || unaligned_size(&*ty, wire_format) % 8 != 0
+        Array(ty, _) => {
+            let alignment = alignment(&*ty, ool, wire_format);
+            let has_trailing_padding = unaligned_size(&*ty, wire_format) % alignment != 0;
+            has_padding(&*ty, ool, wire_format) || has_trailing_padding
         }
-        DynVector(members, _) => members.iter().any(|member| {
-            has_padding(&*member, wire_format) || unaligned_size(&*member, wire_format) % 8 != 0
-        }),
+        Ptr(ty) | Boxed(ty) => has_padding(&*ty, true, wire_format),
         Handle | Primitive(_) => false,
     }
 }
@@ -247,12 +317,11 @@ fn has_padding(ty: &Type, wire_format: WireFormat) -> bool {
 fn has_flexible_envelope(ty: &Type, wire_format: WireFormat) -> bool {
     use Type::*;
     match ty {
-        DynVector(members, _) | Sum(members) | Product(members) => members
+        Product(_, true) => true,
+        Sum(members) | Product(members, _) => members
             .iter()
             .any(|member| has_flexible_envelope(&*member, wire_format)),
-        Vector(ty, _) | Array(ty, _) | Ptr(ty) => has_flexible_envelope(&*ty, wire_format),
-        Envelope(_, _, true) => true,
-        Envelope(ty, _, false) => has_flexible_envelope(&*ty, wire_format),
+        Boxed(ty) | Array(ty, _) | Ptr(ty) => has_flexible_envelope(&*ty, wire_format),
         Handle | Primitive(_) => false,
     }
 }
@@ -260,16 +329,63 @@ fn has_flexible_envelope(ty: &Type, wire_format: WireFormat) -> bool {
 fn contains_union(ty: &Type, wire_format: WireFormat) -> bool {
     use Type::*;
     match ty {
-        DynVector(members, _) | Product(members) => members
+        Product(members, _) => members
             .iter()
             .any(|member| contains_union(&*member, wire_format)),
         // currently only a union can desugar to a sum
         Sum(_) => true,
-        Envelope(ty, _, _) | Vector(ty, _) | Array(ty, _) | Ptr(ty) => {
-            contains_union(&*ty, wire_format)
-        }
+        Array(ty, _) | Ptr(ty) | Boxed(ty) => contains_union(&*ty, wire_format),
         Handle | Primitive(_) => false,
     }
+}
+
+pub fn fieldshapes(ty: &Type, ool: bool, wire_format: WireFormat) -> Option<Vec<FieldShape>> {
+    use Type::*;
+    match ty {
+        Product(members, _) => {
+            // alignments[i] is the alignment that member[i] needs to pad to;
+            // for all members it's the alignment of the next member except for
+            // the last member, where it's the alignment of the object
+            let mut alignments: Vec<u32> = members
+                .iter()
+                .skip(1)
+                .map(|member| alignment(member, ool, wire_format))
+                .collect();
+            alignments.push(alignment(ty, ool, wire_format));
+
+            let mut offset = 0;
+            Some(
+                members
+                    .iter()
+                    .enumerate()
+                    .map(|(i, member)| {
+                        let size = unaligned_size(&*member, wire_format);
+                        let padding = padding(offset + size, alignments[i]);
+                        let ret = FieldShape { offset, padding };
+                        offset += size + padding;
+                        ret
+                    })
+                    .collect(),
+            )
+        }
+        Sum(members) => {
+            // TODO: double check this
+            Some(
+                members
+                    .iter()
+                    .map(|member| FieldShape {
+                        offset: 0,
+                        padding: padding(unaligned_size(member, wire_format), 8),
+                    })
+                    .collect(),
+            )
+        }
+        _ => None,
+    }
+}
+
+fn padding(offset: u32, alignment: u32) -> u32 {
+    (!offset + 1) & (alignment - 1)
 }
 
 fn object_align(size: u32) -> u32 {
@@ -281,6 +397,7 @@ fn align_to(size: u32, alignment: u32) -> u32 {
 }
 
 // TODO: we do need Type::Identifier, in order to check for recursion here...
+
 // Conceptually FIDL will allow any type that can be expressed in the wire format,
 // which means that recursive types are OK if they can be finite. In other words,
 // it's OK to have an infinite upper bound, but not OK to have an infinite lower bound.
@@ -288,13 +405,11 @@ fn align_to(size: u32, alignment: u32) -> u32 {
 pub fn can_be_finite(ty: &Type) -> bool {
     use Type::*;
     match ty {
-        // add to a set of scene names. if it's already there, return false, otherwise, call
+        // add to a set of seen names. if it's already there, return false, otherwise, call
         // can_be_finite recursively
         // Identifier(_name) => unimplemented!(),
-        Product(members) | Sum(members) => members.iter().all(|m| can_be_finite(&*m)),
-        Array(ty, _) | Envelope(ty, false, _) => can_be_finite(&*ty),
-        Ptr(_) | Envelope(_, true, _) | DynVector(_, _) | Vector(_, _) | Handle | Primitive(_) => {
-            true
-        }
+        Product(members, _) | Sum(members) => members.iter().all(|m| can_be_finite(&*m)),
+        Boxed(ty) | Array(ty, _) => can_be_finite(&*ty),
+        Ptr(_) | Handle | Primitive(_) => true,
     }
 }

@@ -239,6 +239,14 @@ pub enum Strictness {
     Flexible,
 }
 
+impl Strictness {
+    pub fn is_flexible(&self) -> bool {
+        match self {
+            Strictness::Strict => false,
+            Strictness::Flexible => true,
+        }
+    }
+}
 // TODO: what's a good name for this? it's all "things" that can be specified in FIDL
 // TODO: move into a separate file
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

@@ -119,9 +119,6 @@ pub enum Term {
     False,
 }
 
-// TODO: use Spanned<Box<Type>> in all recursive cases to simplify function
-// signatures?
-
 // TODO: is it better to have these variants defined separately? or should they
 // be inline on the enum?
 // TODO: what should the distinction be? e.g. should bytes/byte/string be separate
