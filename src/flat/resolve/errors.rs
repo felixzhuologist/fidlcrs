@@ -1,4 +1,4 @@
-use crate::errors::{span_to_snippet, three_spans_to_snippet, two_spans_to_snippet, ErrText};
+use crate::errors::{span_to_snippet, spans_to_snippet, two_spans_to_snippet, ErrText};
 use crate::lexer::Span;
 use crate::raw::Spanned;
 use crate::source_file::FileMap;
@@ -155,7 +155,7 @@ impl Error {
                 span,
                 interp1,
                 interp2,
-            } => three_spans_to_snippet(
+            } => spans_to_snippet(
                 ErrText {
                     text: "ambiguous reference".to_string(),
                     ty: AnnotationType::Error,

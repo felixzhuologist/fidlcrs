@@ -130,7 +130,7 @@ pub fn two_spans_to_snippet(
 
 // TODO: share Slice for any snippets in the same source (generalize the logic
 // from two_spans_to_snippet to apply to N spans)
-pub fn three_spans_to_snippet(
+pub fn spans_to_snippet(
     title: ErrText,
     annotations: Vec<(Span, ErrText)>,
     srcs: &FileMap,
