@@ -156,8 +156,7 @@ TableMember: TableMember = {
 
 TableMemberInner: TableMemberInner = {
     "reserved" => TableMemberInner::Reserved,
-    <ty:Spanned<Type>> <name:Spanned<Identifier>> <default_value:MaybeDefault> =>
-        TableMemberInner::Used{ ty, name, default_value}
+    <ty:Spanned<Type>> <name:Spanned<Identifier>> => TableMemberInner::Used{ ty, name }
 };
 
 UnionMember: UnionMember = {

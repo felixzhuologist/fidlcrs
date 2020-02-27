@@ -166,12 +166,7 @@ impl Table {
 
 impl TableMember {
     pub fn validate(&self, validator: &mut Validator) -> Result<(), Error> {
-        if let TableMemberInner::Used {
-            ty,
-            name: _,
-            default_value: _,
-        } = &self.inner
-        {
+        if let TableMemberInner::Used { ty, name: _ } = &self.inner {
             let kind = validator.kind_check(ty.into());
             if !kind.is_concrete() {
                 return Err(Error::NonConcreteType {

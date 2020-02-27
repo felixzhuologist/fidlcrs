@@ -136,7 +136,6 @@ pub enum TableMemberInner {
     Used {
         ty: Spanned<Box<Type>>,
         name: Spanned<String>,
-        default_value: Option<Spanned<Term>>,
     },
 }
 

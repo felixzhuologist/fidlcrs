@@ -296,11 +296,7 @@ impl Nameable for TableMember {
     fn name(&self) -> Option<&String> {
         match &self.inner {
             TableMemberInner::Reserved => None,
-            TableMemberInner::Used {
-                ty: _,
-                name,
-                default_value: _,
-            } => Some(&name.value),
+            TableMemberInner::Used { ty: _, name } => Some(&name.value),
         }
     }
 }

@@ -190,7 +190,7 @@ impl raw::Table {
         for spanned in self.members {
             match spanned.try_map(|member| member.resolve(resolver)) {
                 Ok(member) => members.push(member),
-                Err(errs) => errors.extend(errs),
+                Err(err) => errors.push(err),
             }
         }
 
@@ -207,7 +207,7 @@ impl raw::Table {
 }
 
 impl raw::TableMember {
-    pub fn resolve(self, resolver: &mut Resolver) -> Result<TableMember, Vec<Error>> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<TableMember, Error> {
         Ok(TableMember {
             attributes: self.attributes,
             ordinal: self.ordinal,
@@ -217,33 +217,13 @@ impl raw::TableMember {
 }
 
 impl raw::TableMemberInner {
-    pub fn resolve(self, resolver: &mut Resolver) -> Result<TableMemberInner, Vec<Error>> {
+    pub fn resolve(self, resolver: &mut Resolver) -> Result<TableMemberInner, Error> {
         match self {
             raw::TableMemberInner::Reserved => Ok(TableMemberInner::Reserved),
-            raw::TableMemberInner::Used {
-                ty,
+            raw::TableMemberInner::Used { ty, name } => Ok(TableMemberInner::Used {
+                ty: resolver.resolve_type_boxed(ty)?,
                 name,
-                default_value,
-            } => {
-                let ty = resolver.resolve_type_boxed(ty);
-                let default_value = default_value.map(|t| resolver.resolve_term(t)).transpose();
-                let mut errors = Vec::new();
-                if let Err(err) = &ty {
-                    errors.push(err.clone());
-                }
-                if let Err(err) = &default_value {
-                    errors.push(err.clone());
-                }
-                if !errors.is_empty() {
-                    Err(errors)
-                } else {
-                    Ok(TableMemberInner::Used {
-                        ty: ty.unwrap(),
-                        name,
-                        default_value: default_value.unwrap(),
-                    })
-                }
-            }
+            }),
         }
     }
 }
