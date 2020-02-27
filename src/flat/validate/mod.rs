@@ -146,9 +146,15 @@ impl<'a> Validator<'a> {
         }
     }
 
-    // TODO: this won't be needed once library's keys are Names
-    fn to_name(&self, _name: &String) -> Name {
-        unimplemented!()
+    // TODO: cloning. is it possible to make library keys Names? or to make
+    // Names only consist of IDs?
+    fn to_name(&self, name: &String) -> Name {
+        Name {
+            // hardcoded to the most recent library
+            library: LibraryId(self.scope.libraries.len() - 1),
+            name: name.clone(),
+            member: None,
+        }
     }
 
     pub fn kind_check(&mut self, ty: Spanned<&Type>) -> Kind {
