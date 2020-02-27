@@ -87,15 +87,10 @@ impl<'a> Validator<'a> {
             // is a single non spanned expected type for each member value). we may want
             // to refactor them all into a single code path
             let (_, ty, term) = &entry.value;
-            let kind = self.kind_check(ty.into());
-            if !kind.is_concrete() {
-                self.errors.push(Error::NonConcreteType {
-                    span: ty.span,
-                    missing: kind.missing(),
-                });
-                continue;
+            let ref_ty: Spanned<&Type> = ty.into();
+            if let Err(err) = ref_ty.validate(self) {
+                self.errors.push(err);
             }
-            self.validate_type(ty.into());
 
             let name = self.to_name(name);
             let actual = self.types.get(&name).unwrap().clone();

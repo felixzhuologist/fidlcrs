@@ -5,6 +5,7 @@ use super::Validator;
 use crate::flat::PrimitiveSubtype::*;
 use crate::flat::*;
 use crate::lexer::Span;
+use crate::raw::Spanned;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 
@@ -20,14 +21,8 @@ impl Struct {
 
 impl StructMember {
     pub fn validate(&self, validator: &mut Validator) -> Result<(), Error> {
-        let kind = validator.kind_check((&self.ty).into());
-        if !kind.is_concrete() {
-            return Err(Error::NonConcreteType {
-                span: self.ty.span,
-                missing: kind.missing(),
-            });
-        }
-        validator.validate_type((&self.ty).into());
+        let ty: Spanned<&Type> = (&self.ty).into();
+        ty.validate(validator)?;
 
         if let Some(term) = self.default_value.as_ref() {
             return match validator.type_check(term.into()) {
@@ -178,14 +173,8 @@ impl Table {
 impl TableMember {
     pub fn validate(&self, validator: &mut Validator) -> Result<(), Error> {
         if let TableMemberInner::Used { ty, name: _ } = &self.inner {
-            let kind = validator.kind_check(ty.into());
-            if !kind.is_concrete() {
-                return Err(Error::NonConcreteType {
-                    span: ty.span,
-                    missing: kind.missing(),
-                });
-            }
-            validator.validate_type(ty.into());
+            let ty: Spanned<&Type> = ty.into();
+            ty.validate(validator)?;
 
             let evaled = eval_type(ty.into(), validator.scope)?;
             if let Type::Ptr(_) = evaled.value {
@@ -213,14 +202,8 @@ impl Union {
 impl UnionMember {
     pub fn validate(&self, validator: &mut Validator) -> Result<(), Error> {
         if let UnionMemberInner::Used { ty, name: _ } = &self.inner {
-            let kind = validator.kind_check(ty.into());
-            if !kind.is_concrete() {
-                return Err(Error::NonConcreteType {
-                    span: ty.span,
-                    missing: kind.missing(),
-                });
-            }
-            validator.validate_type(ty.into());
+            let ty: Spanned<&Type> = ty.into();
+            ty.validate(validator)?;
 
             let evaled = eval_type(ty.into(), validator.scope)?;
             if let Type::Ptr(_) = evaled.value {
@@ -270,14 +253,21 @@ impl Method {
 
 impl Parameter {
     pub fn validate(&self, validator: &mut Validator) -> Result<(), Error> {
-        let kind = validator.kind_check((&self.ty).into());
+        let ty: Spanned<&Type> = (&self.ty).into();
+        ty.validate(validator)
+    }
+}
+
+impl Spanned<&Type> {
+    pub fn validate(self, validator: &mut Validator) -> Result<(), Error> {
+        let kind = validator.kind_check(self);
         if !kind.is_concrete() {
             return Err(Error::NonConcreteType {
-                span: self.ty.span,
+                span: self.span,
                 missing: kind.missing(),
-            })
+            });
         }
-        validator.validate_type((&self.ty).into());
+        validator.validate_type(self);
         Ok(())
     }
 }
