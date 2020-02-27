@@ -61,6 +61,10 @@ pub enum Error {
         // either union or table
         decl_kind: &'static str,
     },
+
+    // nullability
+    TypeCantBeNullable(Spanned<Type>),
+    DoubleNullability(Span), // TODO: include definition as help
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -279,10 +283,36 @@ impl Error {
                     ty: AnnotationType::Error,
                 },
                 Some(Annotation {
-                    label: Some("try removing the nullable member in a struct".to_string()),
+                    label: Some("try moving the nullable member into a struct".to_string()),
                     id: None,
                     annotation_type: AnnotationType::Help,
                 }),
+            ),
+            TypeCantBeNullable(ty) => span_to_snippet(
+                ty.span,
+                srcs,
+                ErrText {
+                    text: "invalid nullable type".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: format!("type {} cannot be used as nullable", ty.value),
+                    ty: AnnotationType::Error,
+                },
+                None, // "try wrapping it in a struct"?
+            ),
+            DoubleNullability(span) => span_to_snippet(
+                span,
+                srcs,
+                ErrText {
+                    text: "double nullability".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "type is indicated as nullable twice".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                None,
             ),
         }
     }
@@ -326,7 +356,7 @@ impl fmt::Display for Type {
             Type::Any => write!(f, "any"),
             Type::Int => write!(f, "int"),
             // these shouldn't be called: should pass in the evaled type to the error
-            Type::TypeSubstitution(_) | Type::Identifier(_) => write!(f, "todo: xyz"),
+            Type::TypeSubstitution(_) | Type::Identifier(_) => write!(f, "todo"),
         }
     }
 }

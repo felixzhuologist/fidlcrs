@@ -40,34 +40,21 @@ impl<'a> Validator<'a> {
     pub fn run(mut self) -> Vec<Error> {
         let lib = self.scope.libraries.last().unwrap();
 
-        self.precompute_types(lib);
-        self.precompute_kinds(lib);
+        self.precompute_types(&lib.terms);
+        self.precompute_kinds(&lib.types);
 
-        self.validate_terms(lib);
-        self.validate_types(lib);
+        self.validate_terms(&lib.terms);
+        self.validate_types(&lib.types);
         self.validate_protocols(lib);
         self.validate_services(lib);
 
         self.errors
     }
 
-    /// Determine Kinds for all top level type declarations and store them in
-    /// self.kinds
-    fn precompute_kinds(&mut self, lib: &Library) {
-        for (name, entry) in lib.types.iter() {
-            let name = self.to_name(name);
-            let (_, ty) = &entry.value;
-            if !self.kinds.contains_key(&name) {
-                let kind = self.kind_check(ty.into());
-                self.kinds.insert(name, kind);
-            }
-        }
-    }
-
     /// Determine Types for all top level const declarations and store them in
     /// self.types
-    fn precompute_types(&mut self, lib: &Library) {
-        for (name, entry) in lib.terms.iter() {
+    fn precompute_types(&mut self, scope: &TermScope) {
+        for (name, entry) in scope {
             let name = self.to_name(name);
             let (_, _, term) = &entry.value;
             if !self.types.contains_key(&name) {
@@ -77,11 +64,28 @@ impl<'a> Validator<'a> {
         }
     }
 
+    /// Determine Kinds for all top level type declarations and store them in
+    /// self.kinds
+    fn precompute_kinds(&mut self, scope: &TypeScope) {
+        for (name, entry) in scope {
+            let name = self.to_name(name);
+            let (_, ty) = &entry.value;
+            if !self.kinds.contains_key(&name) {
+                let kind = self.kind_check(ty.into());
+                self.kinds.insert(name, kind);
+            }
+        }
+    }
+
     /// For each const declaration, check that the type/terms are valid, and
     /// that the term can be coerced to have the user specified type.
-    fn validate_terms(&mut self, lib: &Library) {
+    fn validate_terms(&mut self, scope: &TermScope) {
         // at this point, self.types.keys() == lib.terms.keys()
-        for (name, entry) in lib.terms.iter() {
+        for (name, entry) in scope {
+            // NOTE: this checking of a type and term is common, but used in different
+            // contexts (e.g. in Struct, the term is optional and in bits/enums, there
+            // is a single non spanned expected type for each member value). we may want
+            // to refactor them all into a single code path
             let (_, ty, term) = &entry.value;
             let kind = self.kind_check(ty.into());
             if !kind.is_concrete() {
@@ -105,24 +109,49 @@ impl<'a> Validator<'a> {
         }
     }
 
-    fn validate_types(&mut self, lib: &Library) {
+    fn validate_types(&mut self, scope: &TypeScope) {
         // at this point, self.kinds.keys() == lib.types.keys()
-        for (_, entry) in lib.types.iter() {
+        for (_, entry) in scope {
             let (_, ty) = &entry.value;
-            match &ty.value {
-                Type::Struct(val) => val.validate(self),
-                Type::Bits(val) => val.validate(self),
-                Type::Enum(val) => val.validate(self),
-                Type::Table(val) => val.validate(self),
-                Type::Union(val) => val.validate(self),
-                Type::Ptr(_) => unimplemented!(),
-                Type::ClientEnd(name) | Type::ServerEnd(name) => {
-                    if let Err(err) = self.scope.get_protocol(ty.span.wrap(name)) {
-                        self.errors.push(err);
-                    }
+            self.validate_type(ty.into());
+        }
+    }
+
+    fn validate_type(&mut self, ty: Spanned<&Type>) {
+        match &ty.value {
+            Type::Struct(val) => val.validate(self),
+            Type::Bits(val) => val.validate(self),
+            Type::Enum(val) => val.validate(self),
+            Type::Table(val) => val.validate(self),
+            Type::Union(val) => val.validate(self),
+            Type::Ptr(val) => {
+                let evaled = eval_type(val.into(), self.scope).unwrap();
+                if let Err(err) = can_be_nullable(&evaled) {
+                    self.errors.push(err);
                 }
-                _ => (),
+                self.validate_type(evaled.span.wrap(&evaled.value));
             }
+            Type::ClientEnd(name) | Type::ServerEnd(name) => {
+                if let Err(err) = self.scope.get_protocol(ty.span.wrap(name)) {
+                    self.errors.push(err);
+                }
+            }
+            Type::TypeSubstitution(_) => {
+                // this is OK to unwrap since ty should already be kind checked
+                let evaled = eval_type(ty, self.scope).unwrap();
+                self.validate_type(evaled.span.wrap(&evaled.value));
+            }
+            // if this is an identifier its entry will exist in the type scope. since we call
+            // validate_type on all top level types, we don't need to recurse here.
+            Type::Identifier(_) => (),
+            // base types
+            Type::Array(_)
+            | Type::Str(_)
+            | Type::Vector(_)
+            | Type::Handle(_)
+            | Type::Primitive(_)
+            | Type::Int
+            | Type::Any => (),
         }
     }
 
@@ -286,5 +315,15 @@ impl Libraries {
             return Sort::Service;
         }
         panic!("unknown name {:?}", name);
+    }
+}
+
+fn can_be_nullable(ty: &Spanned<Type>) -> Result<(), Error> {
+    match &ty.value {
+        // TODO: not allowing double nullable types makes me realize that
+        // nullability is maybe better included in the kind system
+        Type::Primitive(_) | Type::Array(_) => Err(Error::TypeCantBeNullable(ty.clone())),
+        Type::Ptr(_) => Err(Error::DoubleNullability(ty.span)),
+        _ => Ok(()),
     }
 }

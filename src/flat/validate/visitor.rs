@@ -27,6 +27,7 @@ impl StructMember {
                 missing: kind.missing(),
             });
         }
+        validator.validate_type((&self.ty).into());
 
         if let Some(term) = self.default_value.as_ref() {
             return match validator.type_check(term.into()) {
@@ -184,6 +185,7 @@ impl TableMember {
                     missing: kind.missing(),
                 });
             }
+            validator.validate_type(ty.into());
 
             let evaled = eval_type(ty.into(), validator.scope)?;
             if let Type::Ptr(_) = evaled.value {
@@ -218,6 +220,7 @@ impl UnionMember {
                     missing: kind.missing(),
                 });
             }
+            validator.validate_type(ty.into());
 
             let evaled = eval_type(ty.into(), validator.scope)?;
             if let Type::Ptr(_) = evaled.value {

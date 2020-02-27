@@ -1,0 +1,18 @@
+library test;
+
+using foo = uint8?;
+
+struct Foo {};
+
+struct Bar {
+  Foo? bar;
+};
+
+union Baz {
+  1: bool? baz;
+};
+
+using ok = Foo?;
+
+using notok = ok?;
+
