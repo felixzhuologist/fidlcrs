@@ -1,0 +1,18 @@
+library test;
+
+struct Foo {};
+
+struct Handles {
+  handle ok;
+  handle<vmo> also_ok;
+  handle<vmo>? ok_too;
+  handle<vmo:3>:5? what;
+  handle<Foo> stop;
+  client_end no;
+  server_end<Foo>:3 no_more;
+  client_end<Bar> oh_ok;
+};
+
+protocol Bar {};
+
+

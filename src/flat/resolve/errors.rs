@@ -38,6 +38,11 @@ pub enum Error {
         interp1: Spanned<RawName>,
         interp2: Spanned<RawName>,
     },
+
+    ConstrainedHandle(Span),
+    InvalidHandleSubtype(Span),
+
+    MissingEndArg(Span),
 }
 
 impl Error {
@@ -181,6 +186,53 @@ impl Error {
                     ),
                 ],
                 srcs,
+            ),
+            ConstrainedHandle(span) => span_to_snippet(
+                span,
+                srcs,
+                ErrText {
+                    text: "constrained handle".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "handles do not allow constraints, please remove".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                None,
+            ),
+            InvalidHandleSubtype(span) => span_to_snippet(
+                span,
+                srcs,
+                ErrText {
+                    text: "invalid handle subtype".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "this is not a valid handle subtype".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                Some(Annotation {
+                    label: Some(
+                        "handle subtypes must be one of `vmo`, `channel`, todo: list the rest..."
+                            .to_string(),
+                    ),
+                    id: None,
+                    annotation_type: AnnotationType::Info,
+                }),
+            ),
+            MissingEndArg(span) => span_to_snippet(
+                span,
+                srcs,
+                ErrText {
+                    text: "missing endpoint arg".to_string(),
+                    ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "`client_end` and `server_end` must have a layout arg specified"
+                        .to_string(),
+                    ty: AnnotationType::Error,
+                },
+                None,
             ),
         }
     }

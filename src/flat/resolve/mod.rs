@@ -9,8 +9,8 @@ use crate::lexer::Span;
 use crate::raw;
 use crate::raw::Spanned;
 use errors::{Error, RawName};
-// use crate::raw::Spanned;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
 impl Library {
     // TODO: return errors
@@ -184,6 +184,10 @@ impl<'a> Resolver<'a> {
     ) -> Result<Spanned<Type>, Error> {
         let outer_span = spanned.span;
         spanned.try_map(|ty| {
+            if let Some(handle) = self.maybe_get_handle(&ty, outer_span)? {
+                return Ok(handle);
+            }
+
             let name_span = ty.name.span;
             // there's probably some way to use unwrap_or_else here
             let target_type = match get_builtin_type(&ty.name) {
@@ -329,6 +333,94 @@ impl<'a> Resolver<'a> {
                     }),
                 }
             }
+        }
+    }
+
+    fn maybe_get_handle(
+        &mut self,
+        ty: &raw::Type,
+        outer_span: Span,
+    ) -> Result<Option<Type>, Error> {
+        if ty.name.value.len() != 1 {
+            return Ok(None);
+        }
+        // TODO: the three cases only differ in maybe 3 lines, refactor out common stuff
+        match ty.name.value[0].as_str() {
+            "handle" => {
+                if let Some(_) = ty.constraint {
+                    return Err(Error::ConstrainedHandle(ty.name.span));
+                }
+                let inner = match &ty.layout {
+                    Some(subtype) => {
+                        let subtype = as_handle_subtype(subtype)?;
+                        HandleSubtype::try_from(subtype.value[0].as_str())
+                            .map(|subtype| Type::Handle(Some(subtype)))
+                            .map_err(|_| Error::InvalidHandleSubtype(subtype.span))
+                    }
+                    None => Ok(Type::Handle(None)),
+                }?;
+                if ty.nullable {
+                    // the span of the thing inside the ptr, is just the ptr's span
+                    // without the ? at the end (i.e. subtract 1 from its end)
+                    let inner_span = Span {
+                        file: outer_span.file,
+                        start: outer_span.start,
+                        end: outer_span.end - 1,
+                    };
+                    Ok(Some(Type::Ptr(inner_span.wrap(Box::new(inner)))))
+                } else {
+                    Ok(Some(inner))
+                }
+            }
+            "client_end" => {
+                if let Some(_) = ty.constraint {
+                    return Err(Error::ConstrainedHandle(ty.name.span));
+                }
+                let inner = match &ty.layout {
+                    Some(subtype) => {
+                        let subtype = as_handle_subtype(subtype)?;
+                        Ok(Type::ClientEnd(self.resolve_name(subtype.clone())?.value))
+                    }
+                    None => Err(Error::MissingEndArg(outer_span)),
+                }?;
+                if ty.nullable {
+                    // the span of the thing inside the ptr, is just the ptr's span
+                    // without the ? at the end (i.e. subtract 1 from its end)
+                    let inner_span = Span {
+                        file: outer_span.file,
+                        start: outer_span.start,
+                        end: outer_span.end - 1,
+                    };
+                    Ok(Some(Type::Ptr(inner_span.wrap(Box::new(inner)))))
+                } else {
+                    Ok(Some(inner))
+                }
+            }
+            "server_end" => {
+                if let Some(_) = ty.constraint {
+                    return Err(Error::ConstrainedHandle(ty.name.span));
+                }
+                let inner = match &ty.layout {
+                    Some(subtype) => {
+                        let subtype = as_handle_subtype(subtype)?;
+                        Ok(Type::ServerEnd(self.resolve_name(subtype.clone())?.value))
+                    }
+                    None => Err(Error::MissingEndArg(outer_span)),
+                }?;
+                if ty.nullable {
+                    // the span of the thing inside the ptr, is just the ptr's span
+                    // without the ? at the end (i.e. subtract 1 from its end)
+                    let inner_span = Span {
+                        file: outer_span.file,
+                        start: outer_span.start,
+                        end: outer_span.end - 1,
+                    };
+                    Ok(Some(Type::Ptr(inner_span.wrap(Box::new(inner)))))
+                } else {
+                    Ok(Some(inner))
+                }
+            }
+            _ => Ok(None),
         }
     }
 
@@ -488,6 +580,16 @@ impl FileImports {
     }
 }
 
+fn as_handle_subtype(ty: &Spanned<Box<raw::Type>>) -> Result<&raw::CompoundIdentifier, Error> {
+    let span = ty.span;
+    let ty = &ty.value;
+    if ty.constraint.is_some() || ty.layout.is_some() || ty.nullable || ty.name.value.len() != 1 {
+        Err(Error::InvalidHandleSubtype(span))
+    } else {
+        Ok(&ty.name)
+    }
+}
+
 pub fn get_builtin_type(var: &raw::CompoundIdentifier) -> Option<Type> {
     if var.value.len() != 1 {
         return None;
@@ -514,7 +616,7 @@ pub fn get_builtin_type(var: &raw::CompoundIdentifier) -> Option<Type> {
             element_type: None,
             size: None,
         })),
-        // TODO: we want to handle "handle" specially and resolve
+        // TODO: we want to handle `handle` specially and resolve
         // them directly in resolve_type, instead of using a TypeSubstitution.
         // this is because a handle subtype isn't a valid type, so we don't want
         // users to be able to do using mything = vmo; myhandle = handle<mything>;
