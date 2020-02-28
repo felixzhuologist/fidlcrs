@@ -1,0 +1,13 @@
+library test;
+
+table Foo {
+  1: reserved;
+  2: string? uhoh;
+};
+
+union Bar {
+  1: bool a;
+  2: uint64 b;
+  3: Foo? c;
+};
+

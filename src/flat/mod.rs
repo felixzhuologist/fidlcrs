@@ -9,7 +9,6 @@ use crate::flatten::ResolverContext;
 use crate::source_file::FileMap;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Snippet};
 
-
 pub fn resolve_library(
     srcs: &FileMap,
     ctx: ResolverContext,

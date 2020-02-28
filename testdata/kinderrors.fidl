@@ -1,0 +1,14 @@
+library test;
+
+struct Foo {};
+
+using uhoh = Foo<bool>:3;
+
+using resolved = string:10;
+
+using yikes = resolved<uint8>;
+
+struct Bar {
+  array uhoh;
+};
+

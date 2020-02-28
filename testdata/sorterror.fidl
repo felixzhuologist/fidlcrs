@@ -1,0 +1,20 @@
+library test;
+
+const uint8 a_const = 3;
+
+struct a_type {};
+
+protocol a_protocol {
+};
+
+const uint8 foo = a_type;
+const uint8 bar = a_protocol;
+
+using Foo = a_const;
+using Bar = a_protocol;
+
+protocol Baz {
+  compose a_const;
+  compose a_type;
+};
+

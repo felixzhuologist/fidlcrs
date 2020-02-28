@@ -1,0 +1,15 @@
+library test;
+
+using shortstring = string:3;
+
+const uint8 a = true;
+const bool b = 13;
+
+const uint64 c = -13;
+
+const uint8 d = 1029;
+
+const string ok = "ok";
+
+const shortstring notok = "thisisnotok";
+

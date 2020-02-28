@@ -1,0 +1,17 @@
+library test;
+
+enum Foo : bool {
+  FOO = 1;
+  BAR = 2;
+};
+
+bits Bar : string {
+  FOO = 0b001;
+};
+
+enum Baz {
+  FOO = 1;
+  BAR = 2;
+  BAZ = 1;
+};
+

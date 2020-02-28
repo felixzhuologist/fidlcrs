@@ -23,6 +23,7 @@ pub enum Error {
         // this Span is optional since it only makes sense to provide it if `func`
         // is a user defined type. If it's a builtin (or, eventually, if it's an
         // inline/anonymous type), the func call span will include the definition
+        // TODO: this span doesn't work for e.g. structs
         func_def: Option<Span>,
     },
     NonConcreteType {
@@ -191,8 +192,9 @@ impl Error {
                 },
                 None,
             ),
-            StringBoundsError { length, bounds } => span_to_snippet(
+            StringBoundsError { length, bounds } => two_spans_to_snippet(
                 length.span,
+                bounds.span,
                 srcs,
                 ErrText {
                     text: "string bounds error".to_string(),
@@ -204,6 +206,10 @@ impl Error {
                         length.value, bounds.value
                     ),
                     ty: AnnotationType::Error,
+                },
+                ErrText {
+                    text: "bounds were specified here".to_string(),
+                    ty: AnnotationType::Help,
                 },
                 None,
             ),
@@ -318,8 +324,9 @@ impl fmt::Display for Type {
             Type::Handle(_) | Type::ClientEnd(_) | Type::ServerEnd(_) => write!(f, "handle"),
             Type::Primitive(sub) => write!(f, "{}", sub),
             Type::Any => write!(f, "any"),
-            // shouldn't be called anyways
-            Type::TypeSubstitution(_) | Type::Identifier(_) | Type::Int => unimplemented!(),
+            Type::Int => write!(f, "int"),
+            // these shouldn't be called: should pass in the evaled type to the error
+            Type::TypeSubstitution(_) | Type::Identifier(_) => write!(f, "todo: xyz"),
         }
     }
 }

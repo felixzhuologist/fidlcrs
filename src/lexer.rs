@@ -299,6 +299,8 @@ impl<'input> Tokenizer<'input> {
             "error" => Token::Error,
             "reserved" => Token::Reserved,
             "compose" => Token::Compose,
+            "true" => Token::True,
+            "false" => Token::False,
             _ => Token::Identifier(&ident),
         };
         return spanned(self.file, start, end, token);

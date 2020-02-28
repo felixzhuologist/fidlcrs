@@ -1,0 +1,17 @@
+library test;
+
+using foo = bar;
+using bar = baz;
+using baz = qux;
+using qux = foo;
+
+// use these types and check that cycle error
+// only gets printed once
+
+struct Foo {
+  foo a;
+  bar b;
+  baz c;
+  qux d;
+};
+

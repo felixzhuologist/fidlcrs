@@ -60,12 +60,15 @@ impl Bits {
                 | Type::Primitive(UInt32)
                 | Type::Primitive(UInt64)
                 | Type::Any => (),
-                _ => validator.errors.push(Error::InvalidBitsType(evaled)),
+                _ => {
+                    validator.errors.push(Error::InvalidBitsType(evaled));
+                    return;
+                }
             };
         }
 
         let expected = self.get_type();
-        let member_values: HashMap<u64, Span> = HashMap::new();
+        let mut member_values: HashMap<u64, Span> = HashMap::new();
         for member in &self.members {
             match member.value.validate(validator, expected) {
                 Err(err) => validator.errors.push(err),
@@ -76,6 +79,8 @@ impl Bits {
                             dupe: member.span,
                             decl_kind: "bits",
                         });
+                    } else {
+                        member_values.insert(val, member.span);
                     }
                 }
             };
@@ -118,12 +123,15 @@ impl Enum {
                 | Type::Primitive(Int32)
                 | Type::Primitive(Int64)
                 | Type::Any => (),
-                _ => validator.errors.push(Error::InvalidEnumType(evaled)),
+                _ => {
+                    validator.errors.push(Error::InvalidEnumType(evaled));
+                    return;
+                }
             };
         }
 
         let expected = self.get_type();
-        let member_values: HashMap<i64, Span> = HashMap::new();
+        let mut member_values: HashMap<i64, Span> = HashMap::new();
         for member in &self.members {
             match member.value.validate(validator, expected) {
                 Err(err) => validator.errors.push(err),
@@ -134,6 +142,8 @@ impl Enum {
                             dupe: member.span,
                             decl_kind: "enum",
                         });
+                    } else {
+                        member_values.insert(val, member.span);
                     }
                 }
             };
