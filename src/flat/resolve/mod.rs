@@ -8,6 +8,7 @@ use crate::flatten::{lookup, ResolverContext, UnresolvedScope};
 use crate::lexer::Span;
 use crate::raw;
 use crate::raw::Spanned;
+use crate::span;
 use errors::{Error, RawName};
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -636,6 +637,14 @@ pub fn get_builtin_type(var: &raw::CompoundIdentifier) -> Option<Type> {
         "bytes" => unimplemented!(),
         _ => None,
     }
+}
+
+// TODO: it doesn't really make sense to have a span for the rhs of a type decl
+// (e.g. in struct Foo {...}). we could reconstruct a span starting at the open
+// brace and ending at the close brace but since we currently never need to use
+// this when displaying errors we just use a dummy span for now.
+pub fn dummy_span<T>(value: T) -> Spanned<T> {
+    span::spanned(span::FileId(0), 0, 0, value)
 }
 
 #[cfg(test)]

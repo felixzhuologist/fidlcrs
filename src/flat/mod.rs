@@ -8,6 +8,8 @@ use crate::errors::ErrorCx;
 use crate::flatten::ResolverContext;
 use crate::source_file::FileMap;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Snippet};
+pub use resolve::dummy_span;
+pub use validate::{eval_term, eval_type};
 
 pub fn resolve_library(
     srcs: &FileMap,

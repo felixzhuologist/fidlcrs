@@ -9,7 +9,7 @@ mod visitor;
 use crate::flat::*;
 use crate::raw::Spanned;
 use errors::Error;
-use eval::{eval_term, eval_type};
+pub use eval::{eval_term, eval_type};
 use kindcheck::{kind_check, recursion_check};
 use std::collections::{HashMap, HashSet};
 use typecheck::{term_can_have_type, type_check};
@@ -331,7 +331,9 @@ fn can_be_nullable(ty: &Spanned<Type>) -> Result<(), Error> {
     match &ty.value {
         // TODO: not allowing double nullable types makes me realize that
         // nullability is maybe better included in the kind system
-        Type::Primitive(_) | Type::Array(_) => Err(Error::TypeCantBeNullable(ty.clone())),
+        Type::Primitive(_) | Type::Array(_) | Type::Table(_) => {
+            Err(Error::TypeCantBeNullable(ty.clone()))
+        }
         Type::Ptr(_) => Err(Error::DoubleNullability(ty.span)),
         _ => Ok(()),
     }

@@ -1,6 +1,8 @@
 use crate::flat;
 use crate::flat::PrimitiveSubtype::*;
+use crate::raw::Spanned;
 use std::cmp;
+use std::convert::TryFrom;
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -10,10 +12,9 @@ pub enum Type {
     /// The type that may contain any one of its elements
     Sum(Vec<Box<Type>>),
 
-    // An Array is just a Product with the same type multiple times
-    Array(Box<Type>, u32),
+    /// An Array is just a Product with the same type multiple times
+    Array(Box<Type>, u64),
 
-    // TODO: this may be going too far... we probably want separate Types for vectors and evelopes
     /// A 64bit pointer that MAY point to out of line content
     Ptr(Box<Type>),
     /// A 64bit pointer that MUST point to out of line content
@@ -57,7 +58,7 @@ pub fn from_union(variants: Vec<Box<Type>>, is_flexible: bool) -> Type {
     )
 }
 
-pub fn from_vector(element_type: Box<Type>, bounds: u32) -> Type {
+pub fn nn_vector(element_type: Box<Type>, bounds: u64) -> Type {
     Type::Product(
         vec![
             Box::new(Type::Primitive(UInt64)), // num elements
@@ -67,35 +68,51 @@ pub fn from_vector(element_type: Box<Type>, bounds: u32) -> Type {
     )
 }
 
+pub fn vector(element_type: Box<Type>, bounds: u64) -> Type {
+    Type::Product(
+        vec![
+            Box::new(Type::Primitive(UInt64)), // num elements
+            Box::new(Type::Ptr(Box::new(Type::Array(element_type, bounds)))),
+        ],
+        false,
+    )
+}
+
 // TODO: this should probably take a Spanned<Box<Type>>
-pub fn desugar(ty: &flat::Type) -> Type {
+pub fn desugar(ty: &flat::Type, scope: &flat::Libraries, nullable: bool) -> Type {
     match ty {
-        flat::Type::Struct(val) => Type::Product(
-            val.members
-                .iter()
-                .map(|sp| Box::new(desugar(&*sp.value.ty.value)))
-                .collect(),
-            false,
-        ),
-        flat::Type::Bits(val) => desugar(val.get_type()),
-        flat::Type::Enum(val) => desugar(val.get_type()),
+        flat::Type::Struct(val) => {
+            let result = Type::Product(
+                val.members
+                    .iter()
+                    .map(|sp| Box::new(desugar(&*sp.value.ty.value, scope, false)))
+                    .collect(),
+                false,
+            );
+            if nullable {
+                Type::Ptr(Box::new(result))
+            } else {
+                result
+            }
+        }
+        flat::Type::Bits(val) => desugar(val.get_type(), scope, false),
+        flat::Type::Enum(val) => desugar(val.get_type(), scope, false),
         flat::Type::Table(table) => {
             let member_types = table
                 .members
                 .iter()
                 .filter_map(|member| match &member.value.inner {
                     flat::TableMemberInner::Reserved => None,
-                    flat::TableMemberInner::Used { ty, .. } => Some(Box::new(desugar(&*ty.value))),
+                    flat::TableMemberInner::Used { ty, .. } => Some(Box::new(envelope(
+                        desugar(&*ty.value, scope, false),
+                        table.strictness().is_flexible(),
+                    ))),
                 })
                 .collect();
             Type::Product(
                 vec![
                     Box::new(Type::Primitive(UInt64)), // num elements
-                    // the flexible envelope stuff isn't really correct
-                    Box::new(Type::Ptr(Box::new(Type::Product(
-                        member_types,
-                        table.strictness().is_flexible(),
-                    )))),
+                    Box::new(Type::Boxed(Box::new(Type::Product(member_types, false)))),
                 ],
                 false,
             )
@@ -106,35 +123,80 @@ pub fn desugar(ty: &flat::Type) -> Type {
                 .iter()
                 .filter_map(|member| match &member.value.inner {
                     flat::UnionMemberInner::Reserved => None,
-                    flat::UnionMemberInner::Used { ty, .. } => Some(Box::new(desugar(&*ty.value))),
+                    flat::UnionMemberInner::Used { ty, .. } => {
+                        Some(Box::new(desugar(&*ty.value, scope, false)))
+                    }
                 })
                 .collect();
+            let inner = if nullable {
+                envelope(Type::Sum(variants), union.strictness().is_flexible())
+            } else {
+                nn_envelope(Type::Sum(variants), union.strictness().is_flexible())
+            };
             Type::Product(
                 vec![
                     Box::new(Type::Primitive(UInt64)), // ordinal
-                    Box::new(nn_envelope(
-                        Type::Sum(variants),
-                        union.strictness().is_flexible(),
-                    )),
+                    Box::new(inner),
                 ],
                 false,
             )
         }
-        flat::Type::Identifier(_) => unimplemented!(),
-        // TODO: we need to flatten here depending on what's nullable. e.g. for vectors, strings,
-        // unions, there isn't another layer of indirection - the nullability is built into the
-        // pointer that already exists in that thing. But to check that, we need to ensure that
-        // the inner ty is completely evaled
-        flat::Type::Ptr(_) => unimplemented!(),
-        flat::Type::Array(_) => unimplemented!(),
-        flat::Type::Vector(_) => unimplemented!(),
-        flat::Type::Str(_) => unimplemented!(),
+        flat::Type::Identifier(name) => desugar(
+            &scope.get_type(flat::dummy_span(name)).unwrap().value,
+            scope,
+            nullable,
+        ),
+        flat::Type::Ptr(val) => desugar(&*val.value, scope, true),
+        flat::Type::Array(flat::Array { element_type, size }) => Type::Array(
+            Box::new(desugar(
+                &*element_type.as_ref().unwrap().value,
+                scope,
+                false,
+            )),
+            eval_size(size, scope),
+        ),
+        flat::Type::Vector(flat::Vector {
+            element_type,
+            bounds,
+        }) => {
+            let ty = Box::new(desugar(
+                &*element_type.as_ref().unwrap().value,
+                scope,
+                false,
+            ));
+            let size = eval_size(bounds, scope);
+            if nullable {
+                vector(ty, size)
+            } else {
+                nn_vector(ty, size)
+            }
+        }
+        flat::Type::Str(flat::Str { bounds }) => {
+            let ty = Box::new(Type::Primitive(UInt8));
+            let size = eval_size(bounds, scope);
+            if nullable {
+                vector(ty, size)
+            } else {
+                nn_vector(ty, size)
+            }
+        }
         flat::Type::Handle(_) | flat::Type::ClientEnd(_) | flat::Type::ServerEnd(_) => Type::Handle,
         flat::Type::Primitive(subtype) => Type::Primitive(*subtype),
 
         // should panic or return error
         flat::Type::Any | flat::Type::TypeSubstitution(_) | flat::Type::Int => unimplemented!(),
     }
+}
+
+fn eval_size(term: &Option<Spanned<Box<flat::Term>>>, scope: &flat::Libraries) -> u64 {
+    term.as_ref().map_or(std::u64::MAX, |term| {
+        let result = flat::eval_term(term.into(), scope).unwrap();
+        if let flat::Term::Int(val) = result.value {
+            u64::try_from(*val).unwrap()
+        } else {
+            panic!("you dun goofed")
+        }
+    })
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -213,7 +275,7 @@ fn unaligned_size(ty: &Type, wire_format: WireFormat) -> u32 {
             .map(|member| unaligned_size(&*member, wire_format))
             .max()
             .unwrap_or(1),
-        Array(ty, size) => unaligned_size(&*ty, wire_format) * size,
+        Array(ty, size) => unaligned_size(&*ty, wire_format).saturating_mul(*size as u32),
         Ptr(_) | Boxed(_) => 8,
         Handle => 4,
         Primitive(subtype) => match subtype {
@@ -263,7 +325,7 @@ fn max_handles(ty: &Type, wire_format: WireFormat) -> u32 {
             .iter()
             .map(|member| max_handles(&*member, wire_format))
             .sum::<u32>(),
-        Array(ty, size) => max_handles(&*ty, wire_format) * size,
+        Array(ty, size) => max_handles(&*ty, wire_format).saturating_mul(*size as u32),
         Ptr(ty) | Boxed(ty) => max_handles(&*ty, wire_format),
         Handle => 1,
         Primitive(_) => 0,
@@ -282,7 +344,7 @@ fn max_out_of_line(ty: &Type, wire_format: WireFormat) -> u32 {
             .map(|member| max_out_of_line(&*member, wire_format))
             .max()
             .unwrap_or(0),
-        Array(ty, size) => max_out_of_line(&*ty, wire_format) * size,
+        Array(ty, size) => max_out_of_line(&*ty, wire_format).saturating_mul(*size as u32),
         Ptr(ty) | Boxed(ty) => {
             unaligned_size(&*ty, wire_format) + max_out_of_line(&*ty, wire_format)
         }
@@ -368,18 +430,6 @@ pub fn fieldshapes(ty: &Type, ool: bool, wire_format: WireFormat) -> Option<Vec<
                     .collect(),
             )
         }
-        Sum(members) => {
-            // TODO: double check this
-            Some(
-                members
-                    .iter()
-                    .map(|member| FieldShape {
-                        offset: 0,
-                        padding: padding(unaligned_size(member, wire_format), 8),
-                    })
-                    .collect(),
-            )
-        }
         _ => None,
     }
 }
@@ -388,9 +438,11 @@ fn padding(offset: u32, alignment: u32) -> u32 {
     (!offset + 1) & (alignment - 1)
 }
 
-fn object_align(size: u32) -> u32 {
-    align_to(size, 8)
-}
+// Some things are probably incorrect because the alignment of OOL objects and how it
+// works is not clear to me
+// fn object_align(size: u32) -> u32 {
+//     align_to(size, 8)
+// }
 
 fn align_to(size: u32, alignment: u32) -> u32 {
     (size + (alignment - 1)) & !(alignment - 1)

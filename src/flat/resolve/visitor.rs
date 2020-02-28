@@ -11,15 +11,6 @@ use super::resolve::Resolver;
 use super::*;
 use crate::raw;
 use crate::raw::Spanned;
-use crate::span;
-
-// TODO: it doesn't really make sense to have a span for the rhs of a type decl
-// (e.g. in struct Foo {...}). we could reconstruct a span starting at the open
-// brace and ending at the close brace but since we currently never need to use
-// this when displaying errors we just use a dummy span for now.
-fn dummy_span<T>(value: T) -> Spanned<T> {
-    span::spanned(span::FileId(0), 0, 0, value)
-}
 
 impl raw::Alias {
     pub fn resolve(self, resolver: &mut Resolver) -> Result<(String, TypeEntry), Error> {
