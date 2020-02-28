@@ -1,6 +1,6 @@
-pub mod resolve;
+mod resolve;
 mod tree;
-pub mod validate;
+mod validate;
 
 pub use tree::*;
 
@@ -30,5 +30,12 @@ pub fn add_library(errors: &mut ErrorCx, libs: &mut Libraries, lib: Library) {
             footer: vec![],
             slices: vec![],
         });
+    }
+}
+
+pub fn validate_latest_library(srcs: &FileMap, errors: &mut ErrorCx, libs: &Libraries) {
+    let validator = validate::Validator::new(libs);
+    for err in validator.run() {
+        errors.push(err.into_snippet(srcs));
     }
 }

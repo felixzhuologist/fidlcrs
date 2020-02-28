@@ -17,7 +17,7 @@ pub mod span;
 pub mod token;
 pub mod typeshape;
 
-use flat::{add_library, resolve_library};
+use flat::{add_library, resolve_library, validate_latest_library};
 use flatten::flatten_files;
 use parser::parse_files;
 use raw::validate_files;
@@ -65,6 +65,7 @@ fn compile(files: Vec<String>) -> Result<(), errors::ErrorCx> {
         };
 
         add_library(&mut errors, &mut libs, resolved_lib);
+        validate_latest_library(&srcs, &mut errors, &libs);
     }
 
     if errors.is_empty() {
