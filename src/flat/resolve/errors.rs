@@ -38,9 +38,6 @@ pub enum Error {
         interp1: Spanned<RawName>,
         interp2: Spanned<RawName>,
     },
-
-    /// Two libraries were provided that have the same name
-    DuplicateLibrary(String),
 }
 
 impl Error {
@@ -185,15 +182,6 @@ impl Error {
                 ],
                 srcs,
             ),
-            DuplicateLibrary(name) => Snippet {
-                title: Some(Annotation {
-                    label: Some(format!("multiple libraries with name {}", name)),
-                    id: None,
-                    annotation_type: AnnotationType::Error,
-                }),
-                footer: vec![],
-                slices: vec![],
-            },
         }
     }
 }

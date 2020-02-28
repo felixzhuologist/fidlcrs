@@ -64,7 +64,7 @@ fn compile(files: Vec<String>) -> Result<(), errors::ErrorCx> {
             }
         };
 
-        add_library(&srcs, &mut errors, &mut libs, resolved_lib);
+        add_library(&mut errors, &mut libs, resolved_lib);
     }
 
     if errors.is_empty() {

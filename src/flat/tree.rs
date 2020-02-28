@@ -28,14 +28,14 @@ impl Libraries {
     }
 
     // TODO: should this error be in resolve?
-    pub fn add_library(&mut self, lib: Library) -> Result<(), super::resolve::errors::Error> {
+    pub fn add_library(&mut self, lib: Library) -> Result<(), String> {
         // validate::validate_library(&lib, &self);
 
         // TODO: extra copies
         let name = lib.name.clone();
         if let Some(_) = self.name_to_id.insert(name.clone(), self.next_library_id()) {
             // TODO: attach more information to this error?
-            Err(super::resolve::errors::Error::DuplicateLibrary(name))
+            Err(name)
         } else {
             self.libraries.push(lib);
             Ok(())

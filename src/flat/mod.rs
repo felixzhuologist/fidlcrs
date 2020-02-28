@@ -7,7 +7,8 @@ pub use tree::*;
 use crate::errors::ErrorCx;
 use crate::flatten::ResolverContext;
 use crate::source_file::FileMap;
-use annotate_snippets::snippet::Snippet;
+use annotate_snippets::snippet::{Annotation, AnnotationType, Snippet};
+
 
 pub fn resolve_library(
     srcs: &FileMap,
@@ -18,8 +19,16 @@ pub fn resolve_library(
         .map_err(|errs| errs.into_iter().map(|err| err.into_snippet(srcs)).collect())
 }
 
-pub fn add_library(srcs: &FileMap, errors: &mut ErrorCx, libs: &mut Libraries, lib: Library) {
-    if let Err(err) = libs.add_library(lib) {
-        errors.push(err.into_snippet(srcs));
+pub fn add_library(errors: &mut ErrorCx, libs: &mut Libraries, lib: Library) {
+    if let Err(name) = libs.add_library(lib) {
+        errors.push(Snippet {
+            title: Some(Annotation {
+                label: Some(format!("multiple libraries with name {}", name)),
+                id: None,
+                annotation_type: AnnotationType::Error,
+            }),
+            footer: vec![],
+            slices: vec![],
+        });
     }
 }
