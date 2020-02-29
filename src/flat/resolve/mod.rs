@@ -11,7 +11,7 @@ use crate::raw::Spanned;
 use crate::span;
 use errors::{Error, RawName};
 use std::collections::HashMap;
-use std::convert::TryFrom;
+use std::str::FromStr;
 
 impl Library {
     // TODO: return errors
@@ -354,7 +354,7 @@ impl<'a> Resolver<'a> {
                 let inner = match &ty.layout {
                     Some(subtype) => {
                         let subtype = as_handle_subtype(subtype)?;
-                        HandleSubtype::try_from(subtype.value[0].as_str())
+                        HandleSubtype::from_str(subtype.value[0].as_str())
                             .map(|subtype| Type::Handle(Some(subtype)))
                             .map_err(|_| Error::InvalidHandleSubtype(subtype.span))
                     }
@@ -597,6 +597,7 @@ pub fn get_builtin_type(var: &raw::CompoundIdentifier) -> Option<Type> {
     }
     use PrimitiveSubtype::*;
     match var.value[0].as_str() {
+        // TODO: there should be a way to use serde for this
         "bool" => Some(Type::Primitive(Bool)),
         "uint8" => Some(Type::Primitive(UInt8)),
         "uint16" => Some(Type::Primitive(UInt16)),
@@ -617,21 +618,6 @@ pub fn get_builtin_type(var: &raw::CompoundIdentifier) -> Option<Type> {
             element_type: None,
             size: None,
         })),
-        // TODO: we want to handle `handle` specially and resolve
-        // them directly in resolve_type, instead of using a TypeSubstitution.
-        // this is because a handle subtype isn't a valid type, so we don't want
-        // users to be able to do using mything = vmo; myhandle = handle<mything>;
-        // this should be its own error.
-        "handle" => unimplemented!(),
-        // TODO: implement client_end and server_end in the grammar as in FTP-50
-        // which will make things much easier. otherwise, it'd be impossible to check
-        // things here because we don't know what sort a name has yet. maybe we want
-        // to store Sort as well as Span in the unresolved scope? that way we can
-        // return sort errors here directly.
-        // then, we'd need to handle this specially in kind_check to avoid getting
-        // a sort error when checking the arg to a client/server end.
-        "server_end" => unimplemented!(),
-        "client_end" => unimplemented!(),
 
         "byte" => unimplemented!(),
         "bytes" => unimplemented!(),

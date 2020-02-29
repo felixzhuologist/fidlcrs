@@ -3,6 +3,9 @@
 //! types, we can resolve identifiers and apply type functions. It's up to the caller
 //! to ensure that the term/type they're trying to evaluate is well typed/kinded, otherwise
 //! the evaluated term/type can get "stuck" (or could recurse infinitely)
+//!
+//! Also of note, is that these two functions are called pretty liberally whenever needed,
+//! but if it ever becomes expensive, we can precompute the evaled version of each term/type.
 use super::errors::Error;
 use crate::flat::*;
 use crate::raw::Spanned;

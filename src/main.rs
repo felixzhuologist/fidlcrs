@@ -8,6 +8,7 @@ extern crate lazy_static;
 pub mod errors;
 pub mod flat;
 pub mod flatten;
+pub mod ir;
 lalrpop_mod!(pub grammar);
 pub mod lexer;
 pub mod parser;
@@ -35,12 +36,12 @@ fn main() {
 
     match compile(args.files) {
         // TODO: eventually this will return the IR, and we can output it here
-        Ok(_) => (),
+        Ok(ir) => println!("{}", serde_json::to_string_pretty(&ir).unwrap()),
         Err(errs) => errs.print_errors(),
     };
 }
 
-fn compile(files: Vec<String>) -> Result<(), errors::ErrorCx> {
+fn compile(files: Vec<String>) -> Result<ir::Library, errors::ErrorCx> {
     let mut libs = flat::Libraries::default();
     let mut errors = errors::ErrorCx::default();
     let mut srcs = source_file::FileMap::new();
@@ -69,7 +70,7 @@ fn compile(files: Vec<String>) -> Result<(), errors::ErrorCx> {
     }
 
     if errors.is_empty() {
-        Ok(())
+        Ok(libs.to_ir())
     } else {
         Err(errors)
     }

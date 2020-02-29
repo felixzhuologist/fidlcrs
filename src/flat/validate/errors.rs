@@ -393,19 +393,6 @@ impl fmt::Display for Type {
 
 impl fmt::Display for PrimitiveSubtype {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use PrimitiveSubtype::*;
-        match self {
-            Bool => write!(f, "bool"),
-            Int8 => write!(f, "int8"),
-            Int16 => write!(f, "int16"),
-            Int32 => write!(f, "int32"),
-            Int64 => write!(f, "int64"),
-            UInt8 => write!(f, "uint8"),
-            UInt16 => write!(f, "uint16"),
-            UInt32 => write!(f, "uint32"),
-            UInt64 => write!(f, "uint64"),
-            Float32 => write!(f, "float32"),
-            Float64 => write!(f, "float64"),
-        }
+        write!(f, "{}", serde_json::to_string(self).unwrap())
     }
 }

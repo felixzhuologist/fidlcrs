@@ -1,4 +1,5 @@
 use crate::span;
+use serde::Serialize;
 use std::fmt;
 
 pub type Spanned<T> = span::Spanned<T, usize>;
@@ -201,7 +202,7 @@ pub struct ServiceMember {
     pub name: Spanned<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Attribute {
     pub name: Spanned<String>,
     pub value: Option<Spanned<String>>,

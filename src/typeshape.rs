@@ -1,11 +1,75 @@
 use crate::flat;
 use crate::flat::PrimitiveSubtype::*;
 use crate::raw::Spanned;
+use serde::{Deserialize, Serialize};
 use std::cmp;
 use std::convert::TryFrom;
 
+pub fn get_typeshape(ty: &flat::Type) -> TypeShape {
+    unimplemented!()
+}
+
+fn typeshape(ty: &Type, wire_format: WireFormat) -> TypeShape {
+    let unalined_size = unaligned_size(ty, wire_format);
+    let alignment = alignment(ty, false, wire_format);
+    TypeShape {
+        inline_size: align_to(unalined_size, alignment),
+        alignment: alignment,
+        depth: depth(ty, wire_format),
+        max_handles: max_handles(ty, wire_format),
+        max_out_of_line: max_out_of_line(ty, wire_format),
+        has_padding: has_padding(ty, false, wire_format),
+        has_flexible_envelope: has_flexible_envelope(ty, wire_format),
+        contains_union: contains_union(ty, wire_format),
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum WireFormat {
+    V1,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TypeShape {
+    /// The inline size of this type, including padding for the type's minimum alignment. For
+    /// example, "struct S { uint32 a; uint16 b; };" will have an inline_size of 8, not 6: the
+    /// "packed" size of the struct is 6, but the alignment of its largest member is 4, so 6 is
+    /// rounded up to 8.
+    inline_size: u32,
+    /// The minimum alignment required by this type.
+    alignment: u32,
+    /// These values are calculated incorporating both the current TypeShape, and recursively over
+    /// all child fields. A value of std::numeric_limits<uint32_t>::max() means that the value is
+    /// potentially unbounded, which can happen for self-recursive aggregate objects. For flexible
+    /// types, these values is calculated based on the currently-defined members, and does _not_
+    /// take potential future members into account.
+    depth: u32,
+    max_handles: u32,
+    max_out_of_line: u32,
+    /// `has_padding` is true if this type has _either_ inline or out-of-line padding. For flexible
+    /// types, `has_padding` is calculated based on the currently-defined members, and does _not_
+    /// take potential future members into account. (If it did, `has_padding` would have to be true
+    /// for all flexible types, which doesn't make it very useful.)
+    has_padding: bool,
+
+    has_flexible_envelope: bool,
+    /// Whether this type transitively contains a union. If this is false, union/xunion
+    /// transformations can be avoided
+    contains_union: bool,
+}
+
+/// `FieldShape` describes the offset and padding information for members that are contained within
+/// an aggregate type (e.g. struct/union). TODO(fxb/36337): We can update `FieldShape` to be a
+/// simple offset+padding struct, and remove the getter/setter methods since they're purely for
+/// backward-compatibility with existing code.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldShape {
+    offset: u32,
+    padding: u32,
+}
+
 #[derive(Debug, Clone)]
-pub enum Type {
+enum Type {
     /// The type that contains all of its elements. Second parameter indicates
     /// whether this is a flexible envelope
     Product(Vec<Box<Type>>, bool),
@@ -26,7 +90,7 @@ pub enum Type {
     Primitive(flat::PrimitiveSubtype),
 }
 
-pub fn nn_envelope(ty: Type, is_flexible: bool) -> Type {
+fn nn_envelope(ty: Type, is_flexible: bool) -> Type {
     Type::Product(
         vec![
             Box::new(Type::Primitive(UInt32)),
@@ -37,7 +101,7 @@ pub fn nn_envelope(ty: Type, is_flexible: bool) -> Type {
     )
 }
 
-pub fn envelope(ty: Type, is_flexible: bool) -> Type {
+fn envelope(ty: Type, is_flexible: bool) -> Type {
     Type::Product(
         vec![
             Box::new(Type::Primitive(UInt32)),
@@ -48,7 +112,7 @@ pub fn envelope(ty: Type, is_flexible: bool) -> Type {
     )
 }
 
-pub fn from_union(variants: Vec<Box<Type>>, is_flexible: bool) -> Type {
+fn from_union(variants: Vec<Box<Type>>, is_flexible: bool) -> Type {
     Type::Product(
         vec![
             Box::new(Type::Primitive(UInt64)), // tag
@@ -58,7 +122,7 @@ pub fn from_union(variants: Vec<Box<Type>>, is_flexible: bool) -> Type {
     )
 }
 
-pub fn nn_vector(element_type: Box<Type>, bounds: u64) -> Type {
+fn nn_vector(element_type: Box<Type>, bounds: u64) -> Type {
     Type::Product(
         vec![
             Box::new(Type::Primitive(UInt64)), // num elements
@@ -68,7 +132,7 @@ pub fn nn_vector(element_type: Box<Type>, bounds: u64) -> Type {
     )
 }
 
-pub fn vector(element_type: Box<Type>, bounds: u64) -> Type {
+fn vector(element_type: Box<Type>, bounds: u64) -> Type {
     Type::Product(
         vec![
             Box::new(Type::Primitive(UInt64)), // num elements
@@ -79,7 +143,7 @@ pub fn vector(element_type: Box<Type>, bounds: u64) -> Type {
 }
 
 // TODO: this should probably take a Spanned<Box<Type>>
-pub fn desugar(ty: &flat::Type, scope: &flat::Libraries, nullable: bool) -> Type {
+fn desugar(ty: &flat::Type, scope: &flat::Libraries, nullable: bool) -> Type {
     match ty {
         flat::Type::Struct(val) => {
             let result = Type::Product(
@@ -197,65 +261,6 @@ fn eval_size(term: &Option<Spanned<Box<flat::Term>>>, scope: &flat::Libraries) -
             panic!("you dun goofed")
         }
     })
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum WireFormat {
-    V1,
-}
-
-#[derive(Debug, Clone)]
-pub struct TypeShape {
-    /// The inline size of this type, including padding for the type's minimum alignment. For
-    /// example, "struct S { uint32 a; uint16 b; };" will have an inline_size of 8, not 6: the
-    /// "packed" size of the struct is 6, but the alignment of its largest member is 4, so 6 is
-    /// rounded up to 8.
-    pub inline_size: u32,
-    /// The minimum alignment required by this type.
-    pub alignment: u32,
-    /// These values are calculated incorporating both the current TypeShape, and recursively over
-    /// all child fields. A value of std::numeric_limits<uint32_t>::max() means that the value is
-    /// potentially unbounded, which can happen for self-recursive aggregate objects. For flexible
-    /// types, these values is calculated based on the currently-defined members, and does _not_
-    /// take potential future members into account.
-    pub depth: u32,
-    pub max_handles: u32,
-    pub max_out_of_line: u32,
-    /// `has_padding` is true if this type has _either_ inline or out-of-line padding. For flexible
-    /// types, `has_padding` is calculated based on the currently-defined members, and does _not_
-    /// take potential future members into account. (If it did, `has_padding` would have to be true
-    /// for all flexible types, which doesn't make it very useful.)
-    pub has_padding: bool,
-
-    pub has_flexible_envelope: bool,
-    /// Whether this type transitively contains a union. If this is false, union/xunion
-    /// transformations can be avoided
-    pub contains_union: bool,
-}
-
-/// `FieldShape` describes the offset and padding information for members that are contained within
-/// an aggregate type (e.g. struct/union). TODO(fxb/36337): We can update `FieldShape` to be a
-/// simple offset+padding struct, and remove the getter/setter methods since they're purely for
-/// backward-compatibility with existing code.
-#[derive(Debug, Clone)]
-pub struct FieldShape {
-    pub offset: u32,
-    pub padding: u32,
-}
-
-pub fn typeshape(ty: &Type, wire_format: WireFormat) -> TypeShape {
-    let unalined_size = unaligned_size(ty, wire_format);
-    let alignment = alignment(ty, false, wire_format);
-    TypeShape {
-        inline_size: align_to(unalined_size, alignment),
-        alignment: alignment,
-        depth: depth(ty, wire_format),
-        max_handles: max_handles(ty, wire_format),
-        max_out_of_line: max_out_of_line(ty, wire_format),
-        has_padding: has_padding(ty, false, wire_format),
-        has_flexible_envelope: has_flexible_envelope(ty, wire_format),
-        contains_union: contains_union(ty, wire_format),
-    }
 }
 
 fn unaligned_size(ty: &Type, wire_format: WireFormat) -> u32 {
@@ -401,7 +406,7 @@ fn contains_union(ty: &Type, wire_format: WireFormat) -> bool {
     }
 }
 
-pub fn fieldshapes(ty: &Type, ool: bool, wire_format: WireFormat) -> Option<Vec<FieldShape>> {
+fn fieldshapes(ty: &Type, ool: bool, wire_format: WireFormat) -> Option<Vec<FieldShape>> {
     use Type::*;
     match ty {
         Product(members, _) => {

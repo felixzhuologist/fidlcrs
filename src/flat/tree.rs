@@ -1,7 +1,8 @@
 use crate::lexer::Span;
 use crate::raw::{Attributes, IntLiteral, Spanned, Strictness};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::convert::TryFrom;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
 pub struct LibraryId(pub usize);
@@ -12,7 +13,7 @@ pub struct LibraryId(pub usize);
 pub struct Libraries {
     /// Topologically sorted list of Libraries
     pub libraries: Vec<Library>,
-    name_to_id: HashMap<String, LibraryId>,
+    pub name_to_id: HashMap<String, LibraryId>,
 }
 
 impl Libraries {
@@ -352,7 +353,8 @@ pub struct Name {
     pub member: Option<String>,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum HandleSubtype {
     Bti,
     Channel,
@@ -381,7 +383,8 @@ pub enum HandleSubtype {
     Vmo,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum PrimitiveSubtype {
     Bool,
     Int8,
@@ -485,38 +488,10 @@ impl Param {
     }
 }
 
-impl TryFrom<&str> for HandleSubtype {
-    type Error = ();
+impl FromStr for HandleSubtype {
+    type Err = ();
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        use HandleSubtype::*;
-        match value {
-            "bti" => Ok(Bti),
-            "channel" => Ok(Channel),
-            "debuglog" => Ok(DebugLog),
-            "event" => Ok(Event),
-            "eventpair" => Ok(Eventpair),
-            "exception" => Ok(Exception),
-            "fifo" => Ok(Fifo),
-            "guest" => Ok(Guest),
-            "interrupt" => Ok(Interrupt),
-            "iommu" => Ok(Iommu),
-            "job" => Ok(Job),
-            "pager" => Ok(Pager),
-            "pcidevice" => Ok(PciDevice),
-            "pmt" => Ok(Pmt),
-            "port" => Ok(Port),
-            "process" => Ok(Process),
-            "profile" => Ok(Profile),
-            "resource" => Ok(Resource),
-            "socket" => Ok(Socket),
-            "suspendtoken" => Ok(SuspendToken),
-            "thread" => Ok(Thread),
-            "timer" => Ok(Timer),
-            "vcpu" => Ok(VCpu),
-            "vmar" => Ok(Vmar),
-            "vmo" => Ok(Vmo),
-            _ => Err(()),
-        }
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        serde_json::from_str(s).map_err(|_| ())
     }
 }

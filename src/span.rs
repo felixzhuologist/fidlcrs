@@ -1,4 +1,4 @@
-// use std::cmp::Ordering;
+use serde::{Serialize, Serializer};
 use std::fmt;
 
 // TODO: make Line, Col, ByteOffset types?
@@ -74,6 +74,13 @@ impl<T, Pos> Spanned<T, Pos> {
             span: self.span,
             value: result,
         })
+    }
+}
+
+// we may want a spanned to actually output a location
+impl<T: Serialize, Pos: Serialize> Serialize for Spanned<T, Pos> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.value.serialize(serializer)
     }
 }
 

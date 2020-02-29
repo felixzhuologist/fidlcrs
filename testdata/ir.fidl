@@ -1,0 +1,22 @@
+library test;
+
+const uint8 foo = 3;
+const bool bar = true;
+
+bits FooBits {
+  FOO = 0b01;
+  BAR = 0b10;
+};
+
+bits BarBits : uint64 {
+  FOO = 8;
+};
+
+[SomeVal = "SomeVal"]
+enum FooEnum {
+  FOO = 1;
+  BAR = 2;
+};
+
+// struct Foo {};
+
