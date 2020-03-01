@@ -1,6 +1,7 @@
 use crate::flat;
 use crate::raw;
 use crate::typeshape;
+use crate::typeshape::{desugar, typeshape, FieldShape, TypeShape, WireFormat};
 // use crate::raw::Spanned;
 // use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
@@ -23,6 +24,27 @@ use std::collections::HashMap;
 
 impl flat::Libraries {
     pub fn to_ir(mut self) -> Library {
+        // TODO: this block of code does stuff on the library before mutating it (by popping
+        // below) while it's still valid. this should be moved to a separate step, including
+        // storing precomputed constant values. for time reasons of getting this step working
+        // it's here (and half done) for now. in general this step needs to be thought through
+        // some more, e.g. consider moving it along with kinds/types from flat::Validator into
+        // either Libraries (along with flattened scope) or some other thing.
+        let lib = self.libraries.last().unwrap();
+        let mut typeshapes = HashMap::new();
+        let mut fieldshapes = HashMap::new();
+        for (name, entry) in lib.types.iter() {
+            let (_, ty) = &entry.value;
+            let desugared = desugar(&ty.value, &self, false);
+            typeshapes.insert(name.clone(), typeshape(&desugared, WireFormat::V1));
+            if let flat::Type::Struct(_) = &ty.value {
+                fieldshapes.insert(
+                    name.clone(),
+                    typeshape::fieldshapes(&desugared, false, WireFormat::V1).unwrap(),
+                );
+            }
+        }
+
         let lib = self.libraries.pop().unwrap();
         let lib_id = self.next_library_id();
         let id_to_name: HashMap<_, _> = self
@@ -49,29 +71,32 @@ impl flat::Libraries {
             declmap.insert(full_name, DeclType::Const);
         }
 
-        // let mut structs = Vec::new();
+        let mut structs = Vec::new();
         let mut bits = Vec::new();
         let mut enums = Vec::new();
         for (name, entry) in lib.types {
             let (attributes, ty) = entry.value;
             let full_name = CompoundIdentifier {
                 library_name: id_to_name.get(&lib_id).unwrap().clone(),
-                decl_name: name,
+                decl_name: name.clone(),
             };
             match ty.value {
-                // TODO: we need to precompute layout typeshpaes becaues it requires
-                // access to Libraries which is consumed this point.
-                // flat::Type::Struct(decl) => {
-                    
-                //     structs.push(StructDecl {
-                //         maybe_attributes: attributes,
-                //         name: full_name.clone(),
-                //         anonymous: false,
-                //         members,
-                //         type_shape_v1: unimplemented!(),
-                //     });
-                //     declmap.insert(full_name, DeclType::Struct);
-                // }
+                flat::Type::Struct(decl) => {
+                    let members = decl
+                        .members
+                        .into_iter()
+                        .zip(fieldshapes.remove(&name).unwrap().into_iter())
+                        .map(|(m, fs)| to_structmember(m.value, fs, &id_to_name))
+                        .collect();
+                    structs.push(StructDecl {
+                        maybe_attributes: attributes,
+                        name: full_name.clone(),
+                        anonymous: false,
+                        members,
+                        type_shape_v1: typeshapes.remove(&name).unwrap(),
+                    });
+                    declmap.insert(full_name, DeclType::Struct);
+                }
                 flat::Type::Bits(decl) => {
                     let ty = decl.get_type().clone();
                     let members = decl
@@ -113,7 +138,7 @@ impl flat::Libraries {
             name: lib.name,             // TODO: move instead
             attributes: lib.attributes, // TODO: move instead
             consts,
-            // structs,
+            structs,
             bits,
             enums,
             // tables: Vec::new(),
@@ -126,6 +151,21 @@ impl flat::Libraries {
     }
 }
 
+pub fn to_structmember(
+    member: flat::StructMember,
+    fieldshape: FieldShape,
+    id_to_name: &HashMap<flat::LibraryId, String>,
+) -> StructMember {
+    StructMember {
+        maybe_attributes: member.attributes,
+        name: member.name.value,
+        ty: to_type(*member.ty.value, id_to_name, false),
+        field_shape_v1: fieldshape,
+        maybe_default_value: member
+            .default_value
+            .map(|v| to_constant(v.value, id_to_name)),
+    }
+}
 pub fn to_bitsmember(
     member: flat::BitsMember,
     id_to_name: &HashMap<flat::LibraryId, String>,
@@ -276,14 +316,14 @@ pub struct Library {
     pub attributes: raw::Attributes,
     #[serde(rename = "const_declarations")]
     pub consts: Vec<ConstDecl>,
+    #[serde(rename = "struct_declarations")]
+    pub structs: Vec<StructDecl>,
     #[serde(rename = "bits_declarations")]
     pub bits: Vec<BitsDecl>,
     #[serde(rename = "enum_declarations")]
     pub enums: Vec<EnumDecl>,
     // #[serde(rename = "interface_declarations")]
     // pub protocols: Vec<Spanned<Protocol>>,
-    // #[serde(rename = "struct_declarations")]
-    // pub structs: Vec<Spanned<Struct>>,
     // #[serde(rename = "table_declarations")]
     // pub tables: Vec<Spanned<Table>>,
     // #[serde(rename = "union_declarations")]
@@ -313,7 +353,7 @@ pub struct StructDecl {
     pub name: CompoundIdentifier,
     pub anonymous: bool,
     pub members: Vec<StructMember>,
-    pub type_shape_v1: typeshape::TypeShape,
+    pub type_shape_v1: TypeShape,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -322,7 +362,7 @@ pub struct StructMember {
     pub name: String,
     #[serde(rename = "type")]
     pub ty: Type,
-    pub field_shape_v1: typeshape::FieldShape,
+    pub field_shape_v1: FieldShape,
     pub maybe_default_value: Option<Constant>,
 }
 
@@ -367,7 +407,7 @@ pub struct TableDecl {
     pub name: CompoundIdentifier,
     pub members: Vec<TableMember>,
     pub strict: bool,
-    pub type_shape_v1: typeshape::TypeShape,
+    pub type_shape_v1: TypeShape,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -391,7 +431,7 @@ pub struct UnionDecl {
     pub members: Vec<UnionMember>,
     #[serde(default)]
     pub strict: bool,
-    pub type_shape_v1: typeshape::TypeShape,
+    pub type_shape_v1: TypeShape,
 }
 
 #[derive(Debug, Clone, Serialize)]

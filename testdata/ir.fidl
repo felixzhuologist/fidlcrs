@@ -18,5 +18,5 @@ enum FooEnum {
   BAR = 2;
 };
 
-// struct Foo {};
+struct Foo {};
 

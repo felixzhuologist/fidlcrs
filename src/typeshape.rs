@@ -5,11 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp;
 use std::convert::TryFrom;
 
-pub fn get_typeshape(ty: &flat::Type) -> TypeShape {
-    unimplemented!()
-}
-
-fn typeshape(ty: &Type, wire_format: WireFormat) -> TypeShape {
+pub fn typeshape(ty: &Type, wire_format: WireFormat) -> TypeShape {
     let unalined_size = unaligned_size(ty, wire_format);
     let alignment = alignment(ty, false, wire_format);
     TypeShape {
@@ -69,7 +65,7 @@ pub struct FieldShape {
 }
 
 #[derive(Debug, Clone)]
-enum Type {
+pub enum Type {
     /// The type that contains all of its elements. Second parameter indicates
     /// whether this is a flexible envelope
     Product(Vec<Box<Type>>, bool),
@@ -90,60 +86,8 @@ enum Type {
     Primitive(flat::PrimitiveSubtype),
 }
 
-fn nn_envelope(ty: Type, is_flexible: bool) -> Type {
-    Type::Product(
-        vec![
-            Box::new(Type::Primitive(UInt32)),
-            Box::new(Type::Primitive(UInt32)),
-            Box::new(Type::Boxed(Box::new(ty))),
-        ],
-        is_flexible,
-    )
-}
-
-fn envelope(ty: Type, is_flexible: bool) -> Type {
-    Type::Product(
-        vec![
-            Box::new(Type::Primitive(UInt32)),
-            Box::new(Type::Primitive(UInt32)),
-            Box::new(Type::Ptr(Box::new(ty))),
-        ],
-        is_flexible,
-    )
-}
-
-fn from_union(variants: Vec<Box<Type>>, is_flexible: bool) -> Type {
-    Type::Product(
-        vec![
-            Box::new(Type::Primitive(UInt64)), // tag
-            Box::new(nn_envelope(Type::Sum(variants), is_flexible)),
-        ],
-        is_flexible,
-    )
-}
-
-fn nn_vector(element_type: Box<Type>, bounds: u64) -> Type {
-    Type::Product(
-        vec![
-            Box::new(Type::Primitive(UInt64)), // num elements
-            Box::new(Type::Boxed(Box::new(Type::Array(element_type, bounds)))),
-        ],
-        false,
-    )
-}
-
-fn vector(element_type: Box<Type>, bounds: u64) -> Type {
-    Type::Product(
-        vec![
-            Box::new(Type::Primitive(UInt64)), // num elements
-            Box::new(Type::Ptr(Box::new(Type::Array(element_type, bounds)))),
-        ],
-        false,
-    )
-}
-
 // TODO: this should probably take a Spanned<Box<Type>>
-fn desugar(ty: &flat::Type, scope: &flat::Libraries, nullable: bool) -> Type {
+pub fn desugar(ty: &flat::Type, scope: &flat::Libraries, nullable: bool) -> Type {
     match ty {
         flat::Type::Struct(val) => {
             let result = Type::Product(
@@ -252,6 +196,48 @@ fn desugar(ty: &flat::Type, scope: &flat::Libraries, nullable: bool) -> Type {
     }
 }
 
+fn nn_envelope(ty: Type, is_flexible: bool) -> Type {
+    Type::Product(
+        vec![
+            Box::new(Type::Primitive(UInt32)),
+            Box::new(Type::Primitive(UInt32)),
+            Box::new(Type::Boxed(Box::new(ty))),
+        ],
+        is_flexible,
+    )
+}
+
+fn envelope(ty: Type, is_flexible: bool) -> Type {
+    Type::Product(
+        vec![
+            Box::new(Type::Primitive(UInt32)),
+            Box::new(Type::Primitive(UInt32)),
+            Box::new(Type::Ptr(Box::new(ty))),
+        ],
+        is_flexible,
+    )
+}
+
+fn nn_vector(element_type: Box<Type>, bounds: u64) -> Type {
+    Type::Product(
+        vec![
+            Box::new(Type::Primitive(UInt64)), // num elements
+            Box::new(Type::Boxed(Box::new(Type::Array(element_type, bounds)))),
+        ],
+        false,
+    )
+}
+
+fn vector(element_type: Box<Type>, bounds: u64) -> Type {
+    Type::Product(
+        vec![
+            Box::new(Type::Primitive(UInt64)), // num elements
+            Box::new(Type::Ptr(Box::new(Type::Array(element_type, bounds)))),
+        ],
+        false,
+    )
+}
+
 fn eval_size(term: &Option<Spanned<Box<flat::Term>>>, scope: &flat::Libraries) -> u64 {
     term.as_ref().map_or(std::u64::MAX, |term| {
         let result = flat::eval_term(term.into(), scope).unwrap();
@@ -304,7 +290,7 @@ fn alignment(ty: &Type, ool: bool, wire_format: WireFormat) -> u32 {
         Ptr(_) | Boxed(_) => 8,
         Handle | Primitive(_) => {
             let min = if ool { 8 } else { 0 };
-            cmp::min(min, unaligned_size(ty, wire_format))
+            cmp::max(min, unaligned_size(ty, wire_format))
         }
     }
 }
@@ -406,7 +392,7 @@ fn contains_union(ty: &Type, wire_format: WireFormat) -> bool {
     }
 }
 
-fn fieldshapes(ty: &Type, ool: bool, wire_format: WireFormat) -> Option<Vec<FieldShape>> {
+pub fn fieldshapes(ty: &Type, ool: bool, wire_format: WireFormat) -> Option<Vec<FieldShape>> {
     use Type::*;
     match ty {
         Product(members, _) => {
