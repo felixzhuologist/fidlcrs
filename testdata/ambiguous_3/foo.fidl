@@ -1,0 +1,8 @@
+library foo;
+
+struct Foo {};
+
+enum bar {
+  baz = 1;
+};
+

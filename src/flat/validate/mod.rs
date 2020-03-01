@@ -121,7 +121,7 @@ impl<'a> Validator<'a> {
             if seen.contains(&self.to_name(name)) {
                 continue;
             }
-            if let Err(cycle) = recursion_check(ty.into(), self.scope) {
+            if let Err(cycle) = recursion_check(ty.into(), self.scope, &self.kinds) {
                 for (n, _) in cycle.iter() {
                     seen.insert(n.clone());
                 }

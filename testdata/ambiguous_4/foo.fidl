@@ -1,0 +1,6 @@
+library foo;
+
+enum bar {
+  baz = 1;
+};
+

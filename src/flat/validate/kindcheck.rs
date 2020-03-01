@@ -160,34 +160,39 @@ impl Kind {
     }
 }
 
-pub fn recursion_check(ty: Spanned<&Type>, scope: &Libraries) -> Result<(), Vec<(Name, Span)>> {
+pub fn recursion_check(ty: Spanned<&Type>, scope: &Libraries, cache: &HashMap<Name, Kind>) -> Result<(), Vec<(Name, Span)>> {
     let mut seen = Vec::new();
-    if !can_be_finite(ty, scope, &mut seen) {
+    if !can_be_finite(ty, scope, &mut seen, cache) {
         Err(seen)
     } else {
         Ok(())
     }
 }
 
-fn can_be_finite(ty: Spanned<&Type>, scope: &Libraries, seen: &mut Vec<(Name, Span)>) -> bool {
+fn can_be_finite(ty: Spanned<&Type>, scope: &Libraries, seen: &mut Vec<(Name, Span)>, cache: &HashMap<Name, Kind>) -> bool {
     match ty.value {
         Type::Struct(Struct { members }) => members
             .iter()
-            .all(|member| can_be_finite((&member.value.ty).into(), scope, seen)),
+            .all(|member| can_be_finite((&member.value.ty).into(), scope, seen, cache)),
         Type::Table(_) => true,
         Type::Union(Union { members, .. }) => {
             members.iter().any(|member| match member.value.inner {
                 UnionMemberInner::Reserved => false,
-                UnionMemberInner::Used { ref ty, .. } => can_be_finite(ty.into(), scope, seen),
+                UnionMemberInner::Used { ref ty, .. } => can_be_finite(ty.into(), scope, seen, cache),
             })
         }
         Type::Identifier(name) => {
+            if let Some(Kind::Any) = cache.get(name) {
+                // don't duplicate cycle errors
+                return true;
+            }
+
             if seen.iter().any(|(n, _)| n == name) {
                 return false;
             }
             seen.push((name.clone(), ty.span));
             let ty = scope.get_type(ty.span.wrap(name)).unwrap();
-            let can_be_finite = can_be_finite(ty.into(), scope, seen);
+            let can_be_finite = can_be_finite(ty.into(), scope, seen, cache);
             if can_be_finite {
                 seen.pop();
             }
@@ -196,9 +201,8 @@ fn can_be_finite(ty: Spanned<&Type>, scope: &Libraries, seen: &mut Vec<(Name, Sp
         Type::Ptr(_) => true,
         Type::Array(Array { element_type, .. }) => {
             if let Some(ref inner) = element_type {
-                can_be_finite(inner.into(), scope, seen)
+                can_be_finite(inner.into(), scope, seen, cache)
             } else {
-                // 🤔
                 true
             }
         }
@@ -206,7 +210,7 @@ fn can_be_finite(ty: Spanned<&Type>, scope: &Libraries, seen: &mut Vec<(Name, Sp
         Type::Vector(_) | Type::Str(_) => true,
         Type::TypeSubstitution(_) => {
             let evaled = eval_type(ty.into(), scope).unwrap();
-            can_be_finite(evaled.span.wrap(&evaled.value), scope, seen)
+            can_be_finite(evaled.span.wrap(&evaled.value), scope, seen, cache)
         }
         _ => true,
     }

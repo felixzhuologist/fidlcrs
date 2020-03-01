@@ -1,0 +1,5 @@
+library foo.bar;
+
+const uint32 baz = 2;
+
+

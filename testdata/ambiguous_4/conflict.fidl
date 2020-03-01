@@ -1,0 +1,7 @@
+library test;
+
+using foo;
+using foo.bar;
+
+const uint32 uhoh = foo.bar.baz;
+
