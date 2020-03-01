@@ -18,5 +18,32 @@ enum FooEnum {
   BAR = 2;
 };
 
-struct Foo {};
+struct FooStruct {};
+
+struct BarStruct {
+  BarBits bar;
+  bool hi;
+  // array<string>:10 strs;
+};
+
+table FooTable {
+  1: BarStruct foo;
+  2: reserved;
+  3: FooEnum bar;
+};
+
+union FooUnion {
+  1: bool boolean;
+  2: uint64 number;
+};
+
+protocol FooInterface {
+  JustReq();
+  -> JustResp();
+  Echo(FooTable foo) -> (FooTable foo);
+};
+
+service FooService {
+  FooInterface foo;
+};
 

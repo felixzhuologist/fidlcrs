@@ -190,9 +190,14 @@ pub fn desugar(ty: &flat::Type, scope: &flat::Libraries, nullable: bool) -> Type
         }
         flat::Type::Handle(_) | flat::Type::ClientEnd(_) | flat::Type::ServerEnd(_) => Type::Handle,
         flat::Type::Primitive(subtype) => Type::Primitive(*subtype),
+        flat::Type::TypeSubstitution(_) => desugar(
+            &flat::eval_type(flat::dummy_span(ty), scope).unwrap().value,
+            scope,
+            nullable,
+        ),
 
         // should panic or return error
-        flat::Type::Any | flat::Type::TypeSubstitution(_) | flat::Type::Int => unimplemented!(),
+        flat::Type::Any | flat::Type::Int => unimplemented!(),
     }
 }
 
@@ -326,10 +331,14 @@ fn max_handles(ty: &Type, wire_format: WireFormat) -> u32 {
 fn max_out_of_line(ty: &Type, wire_format: WireFormat) -> u32 {
     use Type::*;
     match ty {
-        Product(members, _) => members
-            .iter()
-            .map(|member| max_out_of_line(&*member, wire_format))
-            .sum::<u32>(),
+        Product(members, _) => {
+            // can't just use .sum() here because we want to .saturating_add
+            let mut result: u32 = 0;
+            for member in members {
+                result = result.saturating_add(max_out_of_line(&*member, wire_format));
+            }
+            result
+        }
         Sum(members) => members
             .iter()
             .map(|member| max_out_of_line(&*member, wire_format))
@@ -337,7 +346,7 @@ fn max_out_of_line(ty: &Type, wire_format: WireFormat) -> u32 {
             .unwrap_or(0),
         Array(ty, size) => max_out_of_line(&*ty, wire_format).saturating_mul(*size as u32),
         Ptr(ty) | Boxed(ty) => {
-            unaligned_size(&*ty, wire_format) + max_out_of_line(&*ty, wire_format)
+            unaligned_size(&*ty, wire_format).saturating_add(max_out_of_line(&*ty, wire_format))
         }
         Handle | Primitive(_) => 0,
     }

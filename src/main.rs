@@ -22,6 +22,7 @@ use flat::{add_library, resolve_library, validate_latest_library};
 use flatten::flatten_files;
 use parser::parse_files;
 use raw::validate_files;
+use std::fs;
 
 #[derive(FromArgs)]
 /// The FIDL compiler, rust edition
@@ -29,14 +30,20 @@ struct Args {
     #[argh(option)]
     /// a comma separated list of fidl files corresponding to a single library
     files: Vec<String>,
+    #[argh(option)]
+    /// path to write JSON IR output
+    json: Option<String>,
 }
 
 fn main() {
     let args: Args = argh::from_env();
 
     match compile(args.files) {
-        // TODO: eventually this will return the IR, and we can output it here
-        Ok(ir) => println!("{}", serde_json::to_string_pretty(&ir).unwrap()),
+        Ok(ir) => match args.json {
+            Some(path) => fs::write(path, serde_json::to_string_pretty(&ir).unwrap())
+                .expect("couldn't write to  out file"),
+            None => println!("no errors found!"),
+        },
         Err(errs) => errs.print_errors(),
     };
 }

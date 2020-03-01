@@ -74,6 +74,8 @@ impl flat::Libraries {
         let mut structs = Vec::new();
         let mut bits = Vec::new();
         let mut enums = Vec::new();
+        let mut tables = Vec::new();
+        let mut unions = Vec::new();
         for (name, entry) in lib.types {
             let (attributes, ty) = entry.value;
             let full_name = CompoundIdentifier {
@@ -129,8 +131,78 @@ impl flat::Libraries {
                     });
                     declmap.insert(full_name, DeclType::Enum);
                 }
-                _ => unimplemented!(),
+                flat::Type::Table(decl) => {
+                    let members = decl
+                        .members
+                        .into_iter()
+                        .map(|m| to_tablemember(m.value, &id_to_name))
+                        .collect();
+                    tables.push(TableDecl {
+                        maybe_attributes: attributes,
+                        name: full_name.clone(),
+                        members,
+                        strict: decl.strictness.map_or(false, |s| !s.value.is_flexible()),
+                        type_shape_v1: typeshapes.remove(&name).unwrap(),
+                    });
+                    declmap.insert(full_name, DeclType::Table);
+                }
+                flat::Type::Union(decl) => {
+                    let members = decl
+                        .members
+                        .into_iter()
+                        .map(|m| to_unionmember(m.value, &id_to_name))
+                        .collect();
+                    unions.push(UnionDecl {
+                        maybe_attributes: attributes,
+                        name: full_name.clone(),
+                        members,
+                        strict: decl.strictness.map_or(false, |s| !s.value.is_flexible()),
+                        type_shape_v1: typeshapes.remove(&name).unwrap(),
+                    });
+                    declmap.insert(full_name, DeclType::Union);
+                }
+                _ => panic!("only layouts here"),
             }
+        }
+
+        let mut protocols = Vec::new();
+        for (name, protocol) in lib.protocols {
+            let full_name = CompoundIdentifier {
+                library_name: id_to_name.get(&lib_id).unwrap().clone(),
+                decl_name: name,
+            };
+            let methods = protocol
+                .value
+                .methods
+                .into_iter()
+                .map(|m| to_method(m.value, &id_to_name))
+                .collect();
+            protocols.push(Interface {
+                maybe_attributes: protocol.value.attributes,
+                name: full_name.clone(),
+                methods,
+            });
+            declmap.insert(full_name, DeclType::Protocol);
+        }
+
+        let mut services = Vec::new();
+        for (name, service) in lib.services {
+            let full_name = CompoundIdentifier {
+                library_name: id_to_name.get(&lib_id).unwrap().clone(),
+                decl_name: name,
+            };
+            let members = service
+                .value
+                .members
+                .into_iter()
+                .map(|m| to_servicemember(m.value, &id_to_name))
+                .collect();
+            services.push(Service {
+                maybe_attributes: service.value.attributes,
+                name: full_name.clone(),
+                members,
+            });
+            declmap.insert(full_name, DeclType::Service);
         }
 
         Library {
@@ -141,11 +213,11 @@ impl flat::Libraries {
             structs,
             bits,
             enums,
-            // tables: Vec::new(),
-            // unions: Vec::new(),
-            // protocols: Vec::new(),
-            // services: Vec::new(),
-            // declarations: fidl_json_ir::DeclMap::new(),
+            tables,
+            unions,
+            protocols,
+            services,
+            declarations: declmap,
             // library_dependencies: Vec::new(),
         }
     }
@@ -185,6 +257,77 @@ pub fn to_enummember(
         name: member.name.value,
         maybe_attributes: member.attributes,
         value: to_constant(member.value.value, id_to_name),
+    }
+}
+
+pub fn to_tablemember(
+    member: flat::TableMember,
+    id_to_name: &HashMap<flat::LibraryId, String>,
+) -> TableMember {
+    let (reserved, ty, name) = match member.inner {
+        flat::TableMemberInner::Reserved => (true, None, None),
+        flat::TableMemberInner::Used { ty, name } => (
+            false,
+            Some(to_type(*ty.value, id_to_name, false)),
+            Some(name.value),
+        ),
+    };
+    TableMember {
+        maybe_attributes: member.attributes,
+        ordinal: member.ordinal.value.value as u32,
+        reserved,
+        ty,
+        name,
+    }
+}
+
+pub fn to_unionmember(
+    member: flat::UnionMember,
+    id_to_name: &HashMap<flat::LibraryId, String>,
+) -> UnionMember {
+    let (reserved, ty, name) = match member.inner {
+        flat::UnionMemberInner::Reserved => (true, None, None),
+        flat::UnionMemberInner::Used { ty, name } => (
+            false,
+            Some(to_type(*ty.value, id_to_name, false)),
+            Some(name.value),
+        ),
+    };
+    UnionMember {
+        maybe_attributes: member.attributes,
+        ordinal: member.ordinal.value.value as u32,
+        reserved,
+        ty,
+        name,
+    }
+}
+
+pub fn to_method(method: flat::Method, _id_to_name: &HashMap<flat::LibraryId, String>) -> Method {
+    Method {
+        maybe_attributes: method.attributes,
+        ordinal: 0, // TODO
+        name: method.name.value,
+        has_request: method.request.is_some(),
+        maybe_request_payload: None, // TODO
+        has_response: method.response.is_some(),
+        maybe_response_payload: None, // TODO
+        is_composed: false,           // TODO
+    }
+}
+
+pub fn to_servicemember(
+    member: flat::ServiceMember,
+    id_to_name: &HashMap<flat::LibraryId, String>,
+) -> ServiceMember {
+    ServiceMember {
+        maybe_attributes: member.attributes,
+        name: member.name.value,
+        ty: Type {
+            kind: TypeKind::Identifier {
+                identifier: to_name(member.protocol.value, id_to_name),
+            },
+            nullable: false,
+        },
     }
 }
 
@@ -255,6 +398,11 @@ pub fn to_type(
             },
             nullable,
         },
+        // TODO: we actually do need to handle this, e.g. for a member of type array<foo>:bar, since
+        // it's possible to have non type aliases here (though we'd be able to assume that this is
+        // of kind *). in the same way that we "unflatten" type function application, we'd need to
+        // re flatten them for the IR. either that or we'd need to keep self valid up to here so that
+        // we can eval
         flat::Type::TypeSubstitution(_) => panic!("fidlc currently doesn't emit these"),
         flat::Type::Primitive(subtype) => Type {
             kind: TypeKind::Primitive { subtype },
@@ -322,14 +470,16 @@ pub struct Library {
     pub bits: Vec<BitsDecl>,
     #[serde(rename = "enum_declarations")]
     pub enums: Vec<EnumDecl>,
-    // #[serde(rename = "interface_declarations")]
-    // pub protocols: Vec<Spanned<Protocol>>,
-    // #[serde(rename = "table_declarations")]
-    // pub tables: Vec<Spanned<Table>>,
-    // #[serde(rename = "union_declarations")]
-    // pub unions: Vec<Spanned<Union>>,
+    #[serde(rename = "table_declarations")]
+    pub tables: Vec<TableDecl>,
+    #[serde(rename = "union_declarations")]
+    pub unions: Vec<UnionDecl>,
+    #[serde(rename = "interface_declarations")]
+    pub protocols: Vec<Interface>,
+    #[serde(rename = "service_declarations")]
+    pub services: Vec<Service>,
     // pub declaration_order: Vec<String>,
-    // pub declarations: DeclMap,
+    pub declarations: HashMap<CompoundIdentifier, DeclType>,
     // pub library_dependencies: Vec<LibraryDep>,
     // note: these are used only prior to resolution.
     // #[serde(skip_serializing, skip_deserializing)]
@@ -414,14 +564,10 @@ pub struct TableDecl {
 pub struct TableMember {
     pub maybe_attributes: raw::Attributes,
     pub ordinal: u32,
-    #[serde(flatten)]
-    pub member_type: TableMemberType,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub enum TableMemberType {
-    Reserved,
-    Field { r#type: Type, name: String },
+    pub reserved: bool,
+    #[serde(rename = "type")]
+    pub ty: Option<Type>,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -429,7 +575,6 @@ pub struct UnionDecl {
     pub maybe_attributes: raw::Attributes,
     pub name: CompoundIdentifier,
     pub members: Vec<UnionMember>,
-    #[serde(default)]
     pub strict: bool,
     pub type_shape_v1: TypeShape,
 }
@@ -438,14 +583,10 @@ pub struct UnionDecl {
 pub struct UnionMember {
     pub maybe_attributes: raw::Attributes,
     pub ordinal: u32,
-    #[serde(flatten)]
-    pub member_type: UnionMemberType,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub enum UnionMemberType {
-    Reserved,
-    Field { r#type: Type, name: String },
+    pub reserved: bool,
+    #[serde(rename = "type")]
+    pub ty: Option<Type>,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -477,7 +618,7 @@ pub struct Service {
 #[derive(Debug, Clone, Serialize)]
 pub struct ServiceMember {
     pub maybe_attributes: raw::Attributes,
-    pub name: CompoundIdentifier,
+    pub name: String,
     #[serde(rename = "type")]
     pub ty: Type,
 }
@@ -569,4 +710,5 @@ pub enum DeclType {
     Struct,
     Table,
     Union,
+    Service,
 }
